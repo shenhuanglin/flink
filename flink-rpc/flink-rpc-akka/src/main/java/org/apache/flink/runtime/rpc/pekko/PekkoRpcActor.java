@@ -213,7 +213,9 @@ class PekkoRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
         sendErrorIfSender(new UnknownMessageException(message));
     }
 
+    // PekkoRpcActor 的消息分发器，根据消息类型将其路由到对应的处理逻辑，确保仅处理受支持的协议消息，其他消息被安全丢弃并通知发送方
     protected void handleRpcMessage(Object message) {
+        // 表示在 Actor 主线程上执行 Runnable
         if (message instanceof RunAsync) {
             handleRunAsync((RunAsync) message);
         } else if (message instanceof CallAsync) {
@@ -700,3 +702,6 @@ class PekkoRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
         }
     }
 }
+// 表示在 Actor 主线程上执行 Callable 并返回结果
+// 表示一次 RPC 方法调用请求，核心方法
+// 其他类型不处理消息并记录日志

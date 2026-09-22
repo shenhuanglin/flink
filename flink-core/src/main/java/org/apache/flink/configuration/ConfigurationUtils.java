@@ -532,6 +532,7 @@ public class ConfigurationUtils {
      *     avro-confluent.properties.schema = 1
      *     avro-confluent.properties.other-prop = 2
      * </pre>
+      * 判断配置项可以用“前缀键”的方式表示
      */
     public static boolean canBePrefixMap(ConfigOption<?> configOption) {
         return configOption.getClazz() == Map.class && !configOption.isList();

@@ -1013,6 +1013,7 @@ public class MiniCluster implements AutoCloseableAsync {
         }
     }
 
+    // 向本地集群提交作业的核心入口，负责将作业图提交给 Dispatcher 并处理相关的文件上传和配置
     public CompletableFuture<JobSubmissionResult> submitJob(JobGraph jobGraph) {
         // When MiniCluster uses the local RPC, the provided JobGraph is passed directly to the
         // Dispatcher. This means that any mutations to the JG can affect the Dispatcher behaviour,

@@ -304,6 +304,7 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 
         InternalTimer<K, N> timer;
 
+        // 找出所有触发时间 ≤ Watermark 时间的计时器并依次触发
         while ((timer = eventTimeTimersQueue.peek()) != null
                 && timer.getTimestamp() <= time
                 && !cancellationContext.isCancelled()) {

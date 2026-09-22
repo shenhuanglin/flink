@@ -24,6 +24,8 @@ import org.apache.flink.configuration.Configuration;
 
 import java.util.concurrent.CompletableFuture;
 
+// 负责具体执行 Pipeline 的核心接口，接收 Pipeline 并将其提交到目标执行环境中运行。在流处理场景中，Pipeline 通常是 StreamGraph，执行器将其转换为
+// JobGraph 并提交到集群
 /** The entity responsible for executing a {@link Pipeline}, i.e. a user job. */
 @Internal
 public interface PipelineExecutor {

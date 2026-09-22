@@ -38,15 +38,20 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
  * When an operator receives this it will know that no more input will be arriving in the future.
  */
 @PublicEvolving
+// 继承 StreamElement 意味着和普通数据记录（StreamRecord）、延迟标记（LatencyMarker）等一样，都是在流中传输的数
+// 据元素
 public final class Watermark extends StreamElement {
 
+    // Source 算子关闭时发出，通知下游“事件时间已经结束，不会再有新的数据”，触发所有未触发的窗口
     /** The watermark that signifies end-of-event-time. */
     public static final Watermark MAX_WATERMARK = new Watermark(Long.MAX_VALUE);
+    // 表示尚未生成任何 Watermark 的初始状态，流的事件时间从 MIN_VALUE 开始，该时间戳的事件会立即被视为迟到
     /** The watermark that signifies is used before any actual watermark has been generated. */
     public static final Watermark UNINITIALIZED = new Watermark(Long.MIN_VALUE);
 
     // ------------------------------------------------------------------------
 
+    // 水位线的时间戳，水位线一旦创建，时间戳不可变
     /** The timestamp of the watermark in milliseconds. */
     private final long timestamp;
 

@@ -22,6 +22,7 @@ import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
+// 描述一个 JobVertex 如何消费上游 IntermediateResult，内部包含每个 Subtask 的输入信息列表
 /** This class describe how a job vertex consume an input(intermediate result). */
 public class JobVertexInputInfo {
 

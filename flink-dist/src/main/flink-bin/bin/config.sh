@@ -17,6 +17,7 @@
 # limitations under the License.
 ################################################################################
 
+# 用于加载所有需要的配置
 constructFlinkClassPath() {
     local FLINK_DIST
     local FLINK_CLASSPATH

@@ -91,6 +91,7 @@ public abstract class SimpleTransformationTranslator<OUT, T extends Transformati
     protected abstract Collection<Integer> translateForStreamingInternal(
             final T transformation, final Context context);
 
+    // 负责在创建 StreamNode 完成之后，为对应的单算子节点补全运行所需的各类元数据和资源配置，将 Transformation 中声明属性写入 StreamGraph 和
     private void configure(final T transformation, final Context context) {
         final StreamGraph streamGraph = context.getStreamGraph();
         final int transformationId = transformation.getId();

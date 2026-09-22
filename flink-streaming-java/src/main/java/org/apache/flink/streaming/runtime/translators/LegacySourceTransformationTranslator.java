@@ -79,6 +79,7 @@ public class LegacySourceTransformationTranslator<OUT>
                             .getInputFormat());
         }
 
+        // 优先使用算子自己的并行度设置，其次使用全局的并行度设置
         final int parallelism =
                 transformation.getParallelism() != ExecutionConfig.PARALLELISM_DEFAULT
                         ? transformation.getParallelism()
@@ -90,6 +91,7 @@ public class LegacySourceTransformationTranslator<OUT>
         streamGraph.setSupportsConcurrentExecutionAttempts(
                 transformationId, transformation.isSupportsConcurrentExecutionAttempts());
 
+        // 返回一个只读且不可变的集合
         return Collections.singleton(transformationId);
     }
 }

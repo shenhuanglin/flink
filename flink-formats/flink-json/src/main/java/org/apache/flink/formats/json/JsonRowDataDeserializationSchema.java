@@ -57,11 +57,13 @@ public class JsonRowDataDeserializationSchema extends AbstractJsonDeserializatio
             boolean ignoreParseErrors,
             TimestampFormat timestampFormat) {
         super(rowType, resultTypeInfo, failOnMissingField, ignoreParseErrors, timestampFormat);
+        // 基于传入的 RowType 创建一个 JsonToRowDataConverter 对象，用于负责将 JsonNode 树按照 LogicalType 递归转换为 RowData
         this.runtimeConverter =
                 new JsonToRowDataConverters(failOnMissingField, ignoreParseErrors, timestampFormat)
                         .createConverter(checkNotNull(rowType));
     }
 
+    // 运行时每条消息调用该方法
     @Override
     public RowData deserialize(@Nullable byte[] message) throws IOException {
         if (message == null) {
@@ -78,6 +80,10 @@ public class JsonRowDataDeserializationSchema extends AbstractJsonDeserializatio
         }
     }
 
+    // ObjectMapper 会创建 JsonParser 然后逐字节扫描，产生 Token 序列，START_OBJECT, FIELD_NAME, VALUE_NUMBER_INT, VALUE_STRING, END_OBJECT 等。
+    // 内部调用 _readTreeAndClose(parser) 方法遍历 Tokens，遇到容器 Token（对象/数组）创建对应的 ContainerNode 节点，遇到值 Token 创建对应类型的 ValueNode 节点，
+    // 会把子节点挂到当前活跃容器节点的内部集合，完成一个容器（遇到 END_OBJECT/END_ARRAY）则把当前活跃容器节点出栈，恢复到上层容器节点，继续处理后续 Token，
+    // 最后得到根 JsonNode（ObjectNode / ArrayNode）。
     public JsonNode deserializeToJsonNode(byte[] message) throws IOException {
         return objectMapper.readTree(message);
     }

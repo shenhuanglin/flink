@@ -89,6 +89,7 @@ public class JobGraph implements Serializable {
 
     private JobType jobType = JobType.BATCH;
 
+    // JobGraph 在使用 Adaptive Scheduler 进行弹性伸缩和动态资源管理时会被标记为动态
     private boolean dynamic;
 
     /**
@@ -433,6 +434,8 @@ public class JobGraph implements Serializable {
         List<JobVertex> sorted = new ArrayList<JobVertex>(this.taskVertices.size());
         Set<JobVertex> remaining = new LinkedHashSet<JobVertex>(this.taskVertices.values());
 
+        // 首先查找无入边的顶点和带有孤立输入的顶点（指该顶点的输入不是来自于另一个算子，而是直接来自外部数据源）
+        // 两者均指 Source 顶点
         // start by finding the vertices with no input edges
         // and the ones with disconnected inputs (that refer to some standalone data set)
         {
@@ -452,6 +455,7 @@ public class JobGraph implements Serializable {
         // traverse from the nodes that were added until we found all elements
         while (!remaining.isEmpty()) {
 
+            // 剩余节点不为空，并且已经访问了所有已经添加的节点，说明剩余节点中存在环
             // first check if we have more candidates to start traversing from. if not, then the
             // graph is cyclic, which is not permitted
             if (startNodePos >= sorted.size()) {
@@ -459,6 +463,7 @@ public class JobGraph implements Serializable {
             }
 
             JobVertex current = sorted.get(startNodePos++);
+            // 深度优先构建拓扑排序结果，只有当一个节点的所有前驱节点都已经被访问过了，才会被添加到结果中
             addNodesThatHaveNoNewPredecessors(current, sorted, remaining);
         }
 
@@ -488,6 +493,7 @@ public class JobGraph implements Serializable {
                     }
 
                     IntermediateDataSet source = e.getSource();
+                    // 如果 v 的输入边的源节点还在 remaining 中，说明 v 还有未访问的前驱节点，不能被添加到 target 中
                     if (remaining.contains(source.getProducer())) {
                         hasNewPredecessors = true;
                         break;

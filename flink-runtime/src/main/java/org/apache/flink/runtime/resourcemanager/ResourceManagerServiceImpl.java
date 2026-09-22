@@ -117,6 +117,7 @@ public class ResourceManagerServiceImpl implements ResourceManagerService, Leade
 
         LOG.info("Starting resource manager service.");
 
+        // 进行 Leader 选举
         leaderElection.startLeaderElection(this);
     }
 

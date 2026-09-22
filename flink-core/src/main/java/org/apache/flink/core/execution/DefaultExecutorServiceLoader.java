@@ -74,6 +74,7 @@ public class DefaultExecutorServiceLoader implements PipelineExecutorServiceLoad
             }
         }
 
+        // 必须有且只能有一个兼容的工厂
         if (compatibleFactories.size() > 1) {
             final String configStr =
                     configuration.toMap().entrySet().stream()

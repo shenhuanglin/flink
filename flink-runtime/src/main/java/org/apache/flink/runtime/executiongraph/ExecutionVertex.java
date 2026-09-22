@@ -125,8 +125,10 @@ public class ExecutionVertex
                         subTaskIndex + 1,
                         jobVertex.getParallelism());
 
+        // 存放当前子任务产出的所有物理分区
         this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
 
+        // 在每个中间结果集合中创建一个属于当前子任务的物理分区 IntermediateResultPartition
         for (IntermediateResult result : producedDataSets) {
             IntermediateResultPartition irp =
                     new IntermediateResultPartition(
@@ -150,6 +152,7 @@ public class ExecutionVertex
 
         this.currentExecution = createNewExecution(createTimestamp);
 
+        // 将当前的 ExecutionVertex 注册到 ExecutionGraph 中
         getExecutionGraphAccessor().registerExecution(currentExecution);
     }
 

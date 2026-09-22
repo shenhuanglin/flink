@@ -317,6 +317,7 @@ public class StreamGraphGenerator {
         this.savepointRestoreSettings = savepointRestoreSettings;
     }
 
+    // 生成 StreamGraph 的核心方法
     public StreamGraph generate() {
         streamGraph = new StreamGraph(executionConfig, checkpointConfig, savepointRestoreSettings);
         shouldExecuteInBatchMode = shouldExecuteInBatchMode();
@@ -324,12 +325,15 @@ public class StreamGraphGenerator {
 
         alreadyTransformed = new IdentityHashMap<>();
 
+        // 将 Transformation 转换成 StreamGraph 中的节点
         for (Transformation<?> transformation : transformations) {
             transform(transformation);
         }
 
+        // 对“细粒度资源管理”场景下的全局边交换模式进行一次安全校验与强制设置，避免批模式下出现资源死锁。仅在批执行模式且图中启用了细粒度资源时生效
         streamGraph.setSlotSharingGroupResource(slotSharingGroupResources);
 
+        // 批处理模式一下的细粒度全局交换模式设置
         setFineGrainedGlobalStreamExchangeMode(streamGraph);
 
         for (StreamNode node : streamGraph.getStreamNodes()) {
@@ -340,6 +344,8 @@ public class StreamGraphGenerator {
             }
         }
 
+        // 先将生成的 StreamGraph 赋值给一个 final 变量，两者指向同一个对象，而后安全地清理生成器的内部对象，以便释放引用，避免内存泄漏并让生成器可复用，而局部
+        // final 变量离开作用域自动可被 GC 回收，无需显示清理
         final StreamGraph builtStreamGraph = streamGraph;
 
         alreadyTransformed.clear();
@@ -349,6 +355,11 @@ public class StreamGraphGenerator {
         return builtStreamGraph;
     }
 
+    // 判断一条边是否禁用非对齐检查点（UC），以下场景会被禁用 1. 点对点连接（Pointwise）：包括 Forward (严格 1:1 映射，要求上下游算子并行度相同) 和
+    // Rescale (Rebalance 的局部化变体，每个上游子任务仅连接下游的一个子集，采用本地轮询) 2.
+    // 广播连接（Broadcast）：上游的每个子任务都会将数据发送给下游的所有子任务 用于避免伸缩容时的数据一致性问题。 只有非点对点、非广播的连接，如 shuffle
+    // (每条记录独立、均匀地随机挑选一个下游分区)、rebalance (每个上游子任务对所有下游子任务按轮询发送，首次随机，之后严格轮转) 等，才完全支持非对齐 Checkpoint
+    // 的伸缩荣
     private boolean shouldDisableUnalignedCheckpointing(StreamEdge edge) {
         StreamPartitioner<?> partitioner = edge.getPartitioner();
         return partitioner.isPointwise() || partitioner.isBroadcast();
@@ -491,6 +502,7 @@ public class StreamGraphGenerator {
         }
     }
 
+    // 判断作业以 BATCH 模式执行还是以 STREAMING 模式执行
     private boolean shouldExecuteInBatchMode() {
         final RuntimeExecutionMode configuredMode =
                 configuration.get(ExecutionOptions.RUNTIME_MODE);
@@ -532,6 +544,7 @@ public class StreamGraphGenerator {
      *
      * <p>This checks whether we already transformed it and exits early in that case. If not it
      * delegates to one of the transformation specific methods.
+      * 根据当前 Transformation 的具体类型，将其转换成 StreamGraph 中的节点和边
      */
     private Collection<Integer> transform(Transformation<?> transform) {
         if (alreadyTransformed.containsKey(transform)) {
@@ -542,6 +555,7 @@ public class StreamGraphGenerator {
 
         if (transform.getMaxParallelism() <= 0) {
 
+            // 如果没有单独设置算子的最大并行度，则默认使用作业的最大并行度
             // if the max parallelism hasn't been set, then first use the job wide max parallelism
             // from the ExecutionConfig.
             int globalMaxParallelismFromConfig = executionConfig.getMaxParallelism();
@@ -550,6 +564,7 @@ public class StreamGraphGenerator {
             }
         }
 
+        // 配置算子的 Slot 共享组及其资源规格
         transform
                 .getSlotSharingGroup()
                 .ifPresent(
@@ -577,9 +592,11 @@ public class StreamGraphGenerator {
                             }
                         });
 
+        // 获取输出类型并进行安全校验
         // call at least once to trigger exceptions about MissingTypeInfo
         transform.getOutputType();
 
+        // 获取当前 Transformation 对应的 TransformationTranslator， 将其转换成 StreamGraph 中的节点或边
         @SuppressWarnings("unchecked")
         final TransformationTranslator<?, Transformation<?>> translator =
                 (TransformationTranslator<?, Transformation<?>>)
@@ -836,6 +853,7 @@ public class StreamGraphGenerator {
         checkNotNull(translator);
         checkNotNull(transform);
 
+        // 对当前 Transformation 的所有父 Transformation 进行递归转换，获取其在 StreamGraph 中的节点 ID 列表
         final List<Collection<Integer>> allInputIds = getParentInputIds(transform.getInputs());
 
         // the recursive call might have already transformed this
@@ -852,6 +870,7 @@ public class StreamGraphGenerator {
                                 .flatMap(Collection::stream)
                                 .collect(Collectors.toList()));
 
+        // 配置上下文对象，传递给 Translator 使用
         final TransformationTranslator.Context context =
                 new ContextImpl(this, streamGraph, slotSharingGroup, configuration);
 
@@ -911,6 +930,9 @@ public class StreamGraphGenerator {
         }
     }
 
+    // ContextImpl 是 StreamGraphGenerator 将 Transformation 转换为 StreamGraph 中的节点期间传递给各种
+    // TransformationTranslator 的上下文对象， 将转换所需的一切依赖进行集中封装，提供给 Translator 查询和操作，保证 Translator 的实现与
+    // StreamGraphGenerator 本身解耦
     private static class ContextImpl implements TransformationTranslator.Context {
 
         private final StreamGraphGenerator streamGraphGenerator;

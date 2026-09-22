@@ -83,6 +83,7 @@ public class JsonFormatFactory implements DeserializationFormatFactory, Serializ
                 final RowType rowType = (RowType) producedDataType.getLogicalType();
                 final TypeInformation<RowData> rowDataTypeInfo =
                         context.createTypeInformation(producedDataType);
+                // 根据 jsonParserEnabled 决定使用哪种反序列化器
                 if (jsonParserEnabled) {
                     return new JsonParserRowDataDeserializationSchema(
                             rowType,

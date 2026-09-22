@@ -81,8 +81,11 @@ public final class FlinkPipelineTranslationUtil {
         return pipelineTranslator.translateToJSONExecutionPlan(pipeline);
     }
 
+    // 根据 Pipeline 的类型（流或批）选择合适的 Translator，将 Pipeline 转换成 JobGraph
+    // @param userClassloader 用户代码类加载器，用于在客户端侧将 Pipeline 转换成 JobGraph
     private static FlinkPipelineTranslator getPipelineTranslator(
             ClassLoader userClassloader, Pipeline pipeline) {
+        // 批处理的 Translator
         PlanTranslator planTranslator = new PlanTranslator();
 
         if (planTranslator.canTranslate(pipeline)) {

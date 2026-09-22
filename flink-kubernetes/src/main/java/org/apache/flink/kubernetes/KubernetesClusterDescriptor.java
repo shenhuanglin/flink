@@ -116,6 +116,7 @@ public class KubernetesClusterDescriptor implements ClusterDescriptor<String> {
                                 "Could not get the rest endpoint of " + clusterId));
             }
 
+            // 构建 JM K8s 资源规格
             try {
                 // Flink client will always use Kubernetes service to contact with jobmanager. So we
                 // have a pre-configured web monitor address. Using StandaloneClientHAServices to
@@ -240,9 +241,17 @@ public class KubernetesClusterDescriptor implements ClusterDescriptor<String> {
                 "Per-Job Mode not supported by Active Kubernetes deployments.");
     }
 
+    // 负责将 Flink JobManager 部署到 Kubernetes 集群
+    // @param entryPoint JobManager 入口类名称
+    // @param clusterSpecification 集群规格，包括 JM 内存、TM 内存、每个 TM 的 Slot 数量等信息
+    // @param detached 是否以 Detached 模式部署，如果是 Detached 模式，ClusterEntrypoint 会在启动时直接退出，
+    // 交由 Kubernetes 来管理生命周期；如果是 Normal 模式，ClusterEntrypoint 会在启动后一直运行，直到集群被关闭
+    // @return ClusterClientProvider 用于获取 ClusterClient 来与 Flink 集群交互
+    // @throws ClusterDeploymentException 如果部署过程中发生任何异常，都会被封装成 ClusterDeploymentException 抛出
     private ClusterClientProvider<String> deployClusterInternal(
             String entryPoint, ClusterSpecification clusterSpecification, boolean detached)
             throws ClusterDeploymentException {
+        // 获取执行模式
         final ClusterEntrypoint.ExecutionMode executionMode =
                 detached
                         ? ClusterEntrypoint.ExecutionMode.DETACHED
@@ -250,16 +259,22 @@ public class KubernetesClusterDescriptor implements ClusterDescriptor<String> {
         flinkConfig.setString(
                 ClusterEntrypoint.INTERNAL_CLUSTER_EXECUTION_MODE, executionMode.toString());
 
+        // 写入入口类名称
         flinkConfig.setString(KubernetesConfigOptionsInternal.ENTRY_POINT_CLASS, entryPoint);
 
+        // 设置 Blob Server 的端口，用于传输 Jar 包
         // Rpc, blob, rest, taskManagerRpc ports need to be exposed, so update them to fixed values.
         KubernetesUtils.checkAndUpdatePortConfigOption(
                 flinkConfig, BlobServerOptions.PORT, Constants.BLOB_SERVER_PORT);
+        // 设置 TM 的 RPC 端口
         KubernetesUtils.checkAndUpdatePortConfigOption(
                 flinkConfig, TaskManagerOptions.RPC_PORT, Constants.TASK_MANAGER_RPC_PORT);
+        // 设置 REST 端口，用于 REST API 和 WebUI
         KubernetesUtils.checkAndUpdatePortConfigOption(
                 flinkConfig, RestOptions.BIND_PORT, Constants.REST_PORT);
 
+        // 如果启用了 HA 模式，则将 Cluster ID 写入配置，用于 HA 服务中的命名空间隔离，并将 JM 的 RPC 端口范围
+        // 配置为单个端口，确保 HA 选举后新 Leader 使用相同的端口继续提供服务，避免客户端连接中断
         if (HighAvailabilityMode.isHighAvailabilityModeActivated(flinkConfig)) {
             flinkConfig.setString(HighAvailabilityOptions.HA_CLUSTER_ID, clusterId);
             KubernetesUtils.checkAndUpdatePortConfigOption(
@@ -269,9 +284,11 @@ public class KubernetesClusterDescriptor implements ClusterDescriptor<String> {
         }
 
         try {
+            // 封装参数
             final KubernetesJobManagerParameters kubernetesJobManagerParameters =
                     new KubernetesJobManagerParameters(flinkConfig, clusterSpecification);
 
+            // 加载 Pod 模板，如果用户指定了模板文件路径，则从文件加载，否则使用默认配置创建一个空的 Pod 模板
             final FlinkPod podTemplate =
                     kubernetesJobManagerParameters
                             .getPodTemplateFilePath()
@@ -280,10 +297,12 @@ public class KubernetesClusterDescriptor implements ClusterDescriptor<String> {
                                             KubernetesUtils.loadPodFromTemplateFile(
                                                     client, file, Constants.MAIN_CONTAINER_NAME))
                             .orElse(new FlinkPod.Builder().build());
+            // 使用装饰器模式逐步构建完整的 K8s 资源规格，包括 Pod 模板和其他参数
             final KubernetesJobManagerSpecification kubernetesJobManagerSpec =
                     KubernetesJobManagerFactory.buildKubernetesJobManagerSpecification(
                             podTemplate, kubernetesJobManagerParameters);
 
+            // 向 Kubernetes 集群提交 JM 资源规格，完成部署
             client.createJobManagerComponent(kubernetesJobManagerSpec);
 
             return createClusterClientProvider(clusterId);

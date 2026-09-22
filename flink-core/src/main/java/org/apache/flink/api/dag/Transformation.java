@@ -556,6 +556,7 @@ public abstract class Transformation<T> {
                             + "interface.",
                     typeInfo.getTypeException());
         }
+        // 表示当前 Transformation 的输出类型已被读取并锁定，之后不能再更改类型信息
         typeUsed = true;
         return this.outputType;
     }

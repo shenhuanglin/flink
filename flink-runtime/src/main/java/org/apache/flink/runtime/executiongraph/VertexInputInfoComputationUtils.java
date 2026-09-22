@@ -37,12 +37,14 @@ import static org.apache.flink.util.Preconditions.checkState;
 /** Util to compute {@link JobVertexInputInfo}s for execution job vertex. */
 public class VertexInputInfoComputationUtils {
 
+    // 计算 ExecutionGraph 中一个 ExecutionJobVertex 的输入信息，包括每个输入数据集的分区范围和子分区范围
     public static Map<IntermediateDataSetID, JobVertexInputInfo> computeVertexInputInfos(
             ExecutionJobVertex ejv,
             Function<IntermediateDataSetID, IntermediateResult> intermediateResultRetriever)
             throws JobException {
         checkState(ejv.isParallelismDecided());
         final List<IntermediateResultInfo> intermediateResultInfos = new ArrayList<>();
+        // 获取输入边对应的 IntermediateResult 信息
         for (JobEdge edge : ejv.getJobVertex().getInputs()) {
             IntermediateResult ires = intermediateResultRetriever.apply(edge.getSourceId());
             if (ires == null) {
@@ -52,6 +54,7 @@ public class VertexInputInfoComputationUtils {
             }
             intermediateResultInfos.add(new IntermediateResultWrapper(ires));
         }
+        // 计算当前 ExecutionJobVertex 的输入信息
         return computeVertexInputInfos(
                 ejv.getParallelism(), intermediateResultInfos, ejv.getGraph().isDynamic());
     }
@@ -68,6 +71,7 @@ public class VertexInputInfoComputationUtils {
         for (IntermediateResultInfo input : inputs) {
             int sourceParallelism = input.getNumPartitions();
 
+            // POINTWISE 模式，上下游 Subtask 之间是局部连接
             if (input.isPointwise()) {
                 jobVertexInputInfos.putIfAbsent(
                         input.getResultId(),
@@ -102,6 +106,8 @@ public class VertexInputInfoComputationUtils {
      * @param numOfSubpartitionsRetriever a retriever to get the number of subpartitions
      * @param isDynamicGraph whether is dynamic graph
      * @return the computed {@link JobVertexInputInfo}
+      * @param sourceCount 上游节点的并行度
+      * @param targetCount 下游节点的并行度
      */
     static JobVertexInputInfo computeVertexInputInfoForPointwise(
             int sourceCount,
@@ -111,6 +117,7 @@ public class VertexInputInfoComputationUtils {
 
         final List<ExecutionVertexInputInfo> executionVertexInputInfos = new ArrayList<>();
 
+        // 上游并行度大于等于下游并行度时，每个下游 Subtask 消费一个或多个上游分区的数据
         if (sourceCount >= targetCount) {
             for (int index = 0; index < targetCount; index++) {
 
@@ -118,6 +125,7 @@ public class VertexInputInfoComputationUtils {
                 int end = (index + 1) * sourceCount / targetCount;
 
                 IndexRange partitionRange = new IndexRange(start, end - 1);
+                // 此时每个上游分区只有一个消费者，子分区范围固定为 [0, 0]
                 IndexRange subpartitionRange =
                         computeConsumedSubpartitionRange(
                                 index,
@@ -174,7 +182,9 @@ public class VertexInputInfoComputationUtils {
             boolean isDynamicGraph,
             boolean isBroadcast) {
         final List<ExecutionVertexInputInfo> executionVertexInputInfos = new ArrayList<>();
+        // 固定，消费所有上游分区
         IndexRange partitionRange = new IndexRange(0, sourceCount - 1);
+        // 每个下游 Subtask 消费所有上游分区的不同子分区
         for (int i = 0; i < targetCount; ++i) {
             IndexRange subpartitionRange =
                     computeConsumedSubpartitionRange(
@@ -273,3 +283,5 @@ public class VertexInputInfoComputationUtils {
     /** Private default constructor to avoid being instantiated. */
     private VertexInputInfoComputationUtils() {}
 }
+// ALL_TO_ALL 模式，每个下游 Subtask 都会消费所有上游 Subtask 的数据
+// 上游并行度小于下游并行度，一个上游分区会被多个下游 Subtask 消费，每个下游 Subtask 消费不同的子分区

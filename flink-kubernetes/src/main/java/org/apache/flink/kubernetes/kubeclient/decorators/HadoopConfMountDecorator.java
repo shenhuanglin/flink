@@ -55,6 +55,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * 1. Mount an existing ConfigMap containing custom Hadoop Configuration. 2. Create and mount a
  * dedicated ConfigMap containing the custom Hadoop configuration from a local directory specified
  * via the HADOOP_CONF_DIR or HADOOP_HOME environment variable.
+  * 用于将 Hadoop 配置信息写入 ConfigMap 并挂载
  */
 public class HadoopConfMountDecorator extends AbstractKubernetesStepDecorator {
 

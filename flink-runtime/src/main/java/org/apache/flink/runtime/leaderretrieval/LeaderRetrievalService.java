@@ -27,6 +27,8 @@ package org.apache.flink.runtime.leaderretrieval;
  * once.
  *
  * <p>The service should be stopped by calling the stop method.
+  * <p>The service should be stopped by calling the stop method. 该接口主要用于 1. 在 Leader 变更时收到通知，并回调注册的
+  * LeaderRetrievalListener 2. 获取 HA 组件当前的 Leader 地址 3. 监听新切换的地址
  */
 public interface LeaderRetrievalService {
 

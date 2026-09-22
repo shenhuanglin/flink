@@ -2232,6 +2232,7 @@ public class StreamExecutionEnvironment implements AutoCloseable {
     @Internal
     public JobClient executeAsync(StreamGraph streamGraph) throws Exception {
         checkNotNull(streamGraph, "StreamGraph cannot be null.");
+        // 获取执行器，用于将 Pipeline 提交给具体的运行目标（本地 JVM、Standalone 集群、YARN、Kubernetes 等）转换成 JobGraph
         final PipelineExecutor executor = getPipelineExecutor();
 
         CompletableFuture<JobClient> jobClientFuture =
@@ -2289,6 +2290,7 @@ public class StreamExecutionEnvironment implements AutoCloseable {
         return getStreamGraphGenerator(transformations).generate();
     }
 
+    // 同步本地 CachedTransformation 与集群中已完成数据集的状态。仅在批处理模式下会产生 CachedTransformation
     private void synchronizeClusterDatasetStatus() {
         if (cachedTransformations.isEmpty()) {
             return;
@@ -2436,9 +2438,16 @@ public class StreamExecutionEnvironment implements AutoCloseable {
      *
      * @param configuration The configuration to instantiate the environment with.
      * @return The execution environment of the context in which the program is executed.
+      * currently executed. If the program is invoked standalone (独立调用), this method returns a local
+      * @param configuration The configuration to instantiate (实例化) the environment with.
      */
     public static StreamExecutionEnvironment getExecutionEnvironment(Configuration configuration) {
+        // 从 threadLocalContextEnvironmentFactory 和 contextEnvironmentFactory 获取一个工厂，
+        // 如果能够获得一个 factory，则通过工厂创建 StreamExecutionEnvironment，否则直接创建一个本地执行环境。
+        // 当使用 IDE 运行程序时，threadLocalContextEnvironmentFactory 和 contextEnvironmentFactory 均为 null，
+        // 会进入 orElseGet 中。
         return Utils.resolveFactory(threadLocalContextEnvironmentFactory, contextEnvironmentFactory)
+                // 对 Optional 进行 map 操作，如有值， 则执行 Lambda 表达式，否则执行 orElseGet 中的方法
                 .map(factory -> factory.createExecutionEnvironment(configuration))
                 .orElseGet(() -> StreamExecutionEnvironment.createLocalEnvironment(configuration));
     }
@@ -2681,6 +2690,7 @@ public class StreamExecutionEnvironment implements AutoCloseable {
             String sourceName,
             Class<?> baseSourceClass,
             TypeInformation<OUT> typeInfo) {
+        // 首先检查用户是否手动传入的输出数据类型，如果没有就检查 Source 是否实现了 ResultTypeQueryable 接口，如果实现了就通过接口方法获取输出数据类型，如果还没有就通过 TypeExtractor 进行推断
         TypeInformation<OUT> resolvedTypeInfo = typeInfo;
         if (resolvedTypeInfo == null && source instanceof ResultTypeQueryable) {
             resolvedTypeInfo = ((ResultTypeQueryable<OUT>) source).getProducedType();
@@ -2752,10 +2762,12 @@ public class StreamExecutionEnvironment implements AutoCloseable {
     }
 
     private PipelineExecutor getPipelineExecutor() throws Exception {
+        // 检查作业的部署环境
         checkNotNull(
                 configuration.get(DeploymentOptions.TARGET),
                 "No execution.target specified in your configuration file.");
 
+        // 会根据 Configuration 中 DeploymentOptions.TARGET 的不同采用不同的 PipelineExecutorFactory
         final PipelineExecutorFactory executorFactory =
                 executorServiceLoader.getExecutorFactory(configuration);
 

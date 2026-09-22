@@ -124,6 +124,7 @@ public class ZooKeeperLeaderRetrievalDriver implements LeaderRetrievalDriver {
         cache.close();
     }
 
+    // Leader 改变时触发
     private void retrieveLeaderInformationFromZooKeeper() {
         try {
             LOG.debug("Leader node has changed.");
@@ -143,6 +144,7 @@ public class ZooKeeperLeaderRetrievalDriver implements LeaderRetrievalDriver {
                     return;
                 }
             }
+            // 通知 Leader
             notifyNoLeader();
         } catch (Exception e) {
             fatalErrorHandler.onFatalError(

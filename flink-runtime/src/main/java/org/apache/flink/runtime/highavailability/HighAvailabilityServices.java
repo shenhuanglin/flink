@@ -46,6 +46,9 @@ import java.util.concurrent.Executor;
  *   <li>Registry that marks a job's status
  *   <li>Naming of RPC endpoints
  * </ul>
+  * 在集群运行时通过该服务创建和初始化核心组件的高可用，包括 1. 提供 Leader 获取和选举服务，如 ResourceManager、Dispatcher、WebMonitor 和
+  * JobManager 的 Leader 选举和获取 2. 提供 Checkpoint 恢复工厂类，用于获取已完成的 Checkpoint 的元信息和 Checkpoint 计数器 3. 提供
+  * SubmittedJobGraphStore 用于保存和恢复 JobGraph
  */
 public interface HighAvailabilityServices
         extends ClientHighAvailabilityServices, GloballyCleanableResource {

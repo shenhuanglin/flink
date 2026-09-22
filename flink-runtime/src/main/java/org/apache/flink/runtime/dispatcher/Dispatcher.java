@@ -207,6 +207,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
      */
     private final Set<JobID> pendingJobResourceRequirementsUpdates = new HashSet<>();
 
+    // 区分正常提交的作业和恢复的作业
     /** Enum to distinguish between initial job submission and re-submission for recovery. */
     protected enum ExecutionType {
         SUBMISSION,
@@ -597,14 +598,17 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
         return false;
     }
 
+    // 负责处理作业提交的核心逻辑
     private CompletableFuture<Acknowledge> internalSubmitJob(JobGraph jobGraph) {
         applyParallelismOverrides(jobGraph);
         log.info("Submitting job '{}' ({}).", jobGraph.getName(), jobGraph.getJobID());
 
+        // 将作业 ID 添加到待终止作业的集合中，以防止重复提交，且可以用于跟踪正在处理的作业
         // track as an outstanding job
         submittedAndWaitingTerminationJobIDs.add(jobGraph.getJobID());
 
         return waitForTerminatingJob(jobGraph.getJobID(), jobGraph, this::persistAndRunJob)
+                // 用于处理完成作业后的清理工作，并从跟踪集合中移除作业 ID
                 .handle((ignored, throwable) -> handleTermination(jobGraph.getJobID(), throwable))
                 .thenCompose(Function.identity())
                 .whenComplete(
@@ -642,9 +646,13 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
         return CompletableFuture.completedFuture(Acknowledge.get());
     }
 
+    // 负责持久化执行计划并启动作业执行
     private void persistAndRunJob(JobGraph jobGraph) throws Exception {
+        // 将执行计划持久化存储，确保作业可以恢复
         jobGraphWriter.putJobGraph(jobGraph);
+        // 初始化客户端过期时间，用于客户端活跃性检查
         initJobClientExpiredTime(jobGraph);
+        // 启动作业
         runJob(createJobMasterRunner(jobGraph), ExecutionType.SUBMISSION);
     }
 
@@ -679,6 +687,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
 
         final JobID jobId = jobManagerRunner.getJobID();
 
+        // 作业完成时的回调处理逻辑
         final CompletableFuture<CleanupJobState> cleanupJobStateFuture =
                 jobManagerRunner
                         .getResultFuture()
@@ -691,9 +700,11 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                                             "The job entry in runningJobs must be bound to the lifetime of the JobManagerRunner.");
 
                                     if (jobManagerRunnerResult != null) {
+                                        // 作业正常完成的处理逻辑
                                         return handleJobManagerRunnerResult(
                                                 jobManagerRunnerResult, executionType);
                                     } else {
+                                        // 作业运行失败的处理逻辑
                                         return CompletableFuture.completedFuture(
                                                 jobManagerRunnerFailed(
                                                         jobId, JobStatus.FAILED, throwable));

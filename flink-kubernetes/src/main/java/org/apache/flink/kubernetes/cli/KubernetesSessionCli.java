@@ -50,12 +50,14 @@ import java.io.InputStreamReader;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
+// KubernetesSession 模式的命令行入口和集群生命周期管理器
 /** Kubernetes customized commandline. */
 @Internal
 public class KubernetesSessionCli {
 
     private static final Logger LOG = LoggerFactory.getLogger(KubernetesSessionCli.class);
 
+    // ATTACHED 模式下，每次轮询用户输入的最大等待时间，单位毫秒
     private static final long CLIENT_POLLING_INTERVAL_MS = 3000L;
 
     private static final String KUBERNETES_CLUSTER_HELP =
@@ -66,7 +68,9 @@ public class KubernetesSessionCli {
 
     private final Configuration baseConfiguration;
 
+    // 用于解析命令行参数，将其转换为配置项
     private final GenericCLI cli;
+    // SPI 加载器，根据 deployment.target 配置项加载对应的 ClusterClientFactory
     private final ClusterClientServiceLoader clusterClientServiceLoader;
 
     public KubernetesSessionCli(Configuration configuration, String configDir) {
@@ -82,10 +86,13 @@ public class KubernetesSessionCli {
         this.cli = new GenericCLI(baseConfiguration, configDir);
     }
 
+    // 获取有效的配置，优先级：命令行参数 > 配置文件 > 默认值
     Configuration getEffectiveConfiguration(String[] args) throws CliArgsException {
         final CommandLine commandLine = cli.parseCommandLineOptions(args, true);
         final Configuration effectiveConfiguration = new Configuration(baseConfiguration);
+        // 将命令行参数覆盖到配置中，优先级高于配置文件
         effectiveConfiguration.addAll(cli.toConfiguration(commandLine));
+        // 硬编码设置 deployment.target 为 kubernetes-session 模式
         effectiveConfiguration.set(DeploymentOptions.TARGET, KubernetesSessionClusterExecutor.NAME);
         return effectiveConfiguration;
     }
@@ -93,12 +100,15 @@ public class KubernetesSessionCli {
     private int run(String[] args) throws FlinkException, CliArgsException {
         final Configuration configuration = getEffectiveConfiguration(args);
 
+        // 获取 KubernetesClusterClientFactory
         final ClusterClientFactory<String> kubernetesClusterClientFactory =
                 clusterClientServiceLoader.getClusterClientFactory(configuration);
 
+        // KubernetesClusterDescriptor 中封装了所有与 Kubernetes 集群交互的动作
         final ClusterDescriptor<String> kubernetesClusterDescriptor =
                 kubernetesClusterClientFactory.createClusterDescriptor(configuration);
 
+        // 判断集群是否已经存在
         try {
             final ClusterClient<String> clusterClient;
             String clusterId = kubernetesClusterClientFactory.getClusterId(configuration);
@@ -106,6 +116,7 @@ public class KubernetesSessionCli {
             final FlinkKubeClient kubeClient =
                     FlinkKubeClientFactory.getInstance().fromConfiguration(configuration, "client");
 
+            // 如果存在则重新连接，获取 ClusterClient
             // Retrieve or create a session cluster.
             if (clusterId != null
                     && kubeClient
@@ -122,6 +133,9 @@ public class KubernetesSessionCli {
                 clusterId = clusterClient.getClusterId();
             }
 
+            // 根据是否是 Detached 模式，决定是否进入交互式命令行界面。Detached 是默认模式，也是生产环境中最常用
+            // 的模式，部署完集群后客户端退出，集群长期运行。如果是 Attached 模式，则会进入 REPL 循环，repStep
+            // 方法每 3 秒检查一次标准输入，通常在需要交互式管理集群时使用
             try {
                 if (!detached) {
                     Tuple2<Boolean, Boolean> continueRepl = new Tuple2<>(true, false);
@@ -159,6 +173,9 @@ public class KubernetesSessionCli {
      *
      * @param in input buffer reader
      * @return f0, whether need to continue read from input. f1, whether need to kill the cluster.
+      * 循环读取客户端输入，处理用户的交互式命令
+      * @param in 标准输入的 BufferedReader，等待用户输入命令
+      * @return f0 代表是否继续读取输入，f1 代表是否需要停止集群
      */
     private Tuple2<Boolean, Boolean> repStep(BufferedReader in)
             throws IOException, InterruptedException {
@@ -191,6 +208,7 @@ public class KubernetesSessionCli {
     }
 
     public static void main(String[] args) {
+        // 加载配置文件
         final Configuration configuration = GlobalConfiguration.loadConfiguration();
 
         final String configDir = CliFrontend.getConfigurationDirectoryFromEnv();
@@ -199,6 +217,7 @@ public class KubernetesSessionCli {
 
         try {
             final KubernetesSessionCli cli = new KubernetesSessionCli(configuration, configDir);
+            // 在安全上下文中执行 run 方法
             retCode = SecurityUtils.getInstalledContext().runSecured(() -> cli.run(args));
         } catch (CliArgsException e) {
             retCode = AbstractCustomCommandLine.handleCliArgsException(e, LOG);
@@ -209,3 +228,4 @@ public class KubernetesSessionCli {
         System.exit(retCode);
     }
 }
+// 如果不存在则部署一个新的 Session 集群

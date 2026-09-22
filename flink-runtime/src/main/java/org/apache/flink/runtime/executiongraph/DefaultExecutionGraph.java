@@ -285,6 +285,7 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     private final Map<IntermediateResultPartitionID, IntermediateResultPartition>
             resultPartitionsById;
 
+    // 存储所有顶点的输入信息
     private final VertexInputInfoStore vertexInputInfoStore;
     private final boolean isDynamic;
 
@@ -824,11 +825,15 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
                 tasks.size(),
                 intermediateResults.size());
 
+        // 创建 ExecutionJobVertex 对象但不初始化
         attachJobVertices(verticesToAttach);
+        // 如果不是动态图，则初始化每个 ExecutionJobVertex，并连接输入和结果的 IntermediateResult，动态图延迟
+        // 到运行时执行
         if (!isDynamic) {
             initializeJobVertices(verticesToAttach, jobManagerJobMetricGroup);
         }
 
+        // 从 ExecutionGraph 构建调度拓扑视图
         // the topology assigning should happen before notifying new vertices to failoverStrategy
         executionTopology = DefaultExecutionTopology.fromExecutionGraph(this);
 
@@ -847,11 +852,13 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
             VertexParallelismInformation parallelismInfo =
                     parallelismStore.getParallelismInfo(jobVertex.getID());
 
+            // 创建顶点并挂载到执行图中
             // create the execution job vertex and attach it to the graph
             ExecutionJobVertex ejv =
                     executionJobVertexFactory.createExecutionJobVertex(
                             this, jobVertex, parallelismInfo);
 
+            // 如果已经存在相同 ID 的顶点，则返回值不为 null，抛出异常
             ExecutionJobVertex previousTask = this.tasks.putIfAbsent(jobVertex.getID(), ejv);
             if (previousTask != null) {
                 throw new JobException(
@@ -887,10 +894,12 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
         checkNotNull(ejv);
         checkNotNull(jobVertexInputInfos);
 
+        // 获取每个顶点的输入边信息
         jobVertexInputInfos.forEach(
                 (resultId, info) ->
                         this.vertexInputInfoStore.put(ejv.getJobVertexId(), resultId, info));
 
+        // 初始化 ExecutionJobVertex 的内部
         ejv.initialize(
                 executionHistorySizeLimit,
                 rpcTimeout,
@@ -899,8 +908,11 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
                 coordinatorStore,
                 jobManagerJobMetricGroup);
 
+        // 建立上下游连接，根据 DistributionPattern 建立 ConsumedPartitionGroup（下游 Subtask 消费哪些分区）
+        // 和 ConsumerVertexGroup（上游分区被哪些 Subtask 消费）
         ejv.connectToPredecessors(this.intermediateResults);
 
+        // 将当前节点的 IntermediateResult 注册到全局映射
         for (IntermediateResult res : ejv.getProducedDataSets()) {
             IntermediateResult previousDataSet =
                     this.intermediateResults.putIfAbsent(res.getId(), res);
@@ -912,6 +924,7 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
             }
         }
 
+        // 注册执行顶点和结果分区
         registerExecutionVerticesAndResultPartitionsFor(ejv);
 
         // enrich network memory.

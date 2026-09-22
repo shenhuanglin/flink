@@ -86,6 +86,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * Class representing the streaming topology. It contains all the information necessary to build the
  * jobgraph for the execution.
+  * Flink 客户端用于描述流式作业拓扑的类，负责维护算子的节点与边、并行度与资源、分区策略与交换模式、状态和检查点配置、迭代环等元数据，提交前油漆生成可执行的 JobGraph
  */
 @Internal
 public class StreamGraph implements Pipeline {
@@ -117,10 +118,15 @@ public class StreamGraph implements Pipeline {
     /** Flag to indicate whether to put all vertices into the same slot sharing group by default. */
     private boolean allVerticesInSameSlotSharingGroupByDefault = true;
 
+    // 顶点表（算子节点），存储所有节点的完整信息，用于节点查询和遍历
     private Map<Integer, StreamNode> streamNodes;
+    // 源节点 ID 集合，用于拓扑排序和特殊处理，仅存储节点 ID，通常与转换前的 Transformation ID 相同
     private Set<Integer> sources;
+    // 汇节点 ID 集合
     private Set<Integer> sinks;
+    // 虚拟侧输出节点映射
     private Map<Integer, Tuple2<Integer, OutputTag>> virtualSideOutputNodes;
+    // 虚拟分区节点映射，第一个整数表示虚拟节点 ID，第二个整数表示该虚拟节点的上游节点的 ID
     private Map<Integer, Tuple3<Integer, StreamPartitioner<?>, StreamExchangeMode>>
             virtualPartitionNodes;
 
@@ -132,6 +138,7 @@ public class StreamGraph implements Pipeline {
     private Path savepointDir;
     private Set<Tuple2<StreamNode, StreamNode>> iterationSourceSinkPairs;
     private InternalTimeServiceManager.Provider timerServiceProvider;
+    // 默认流式作业
     private JobType jobType = JobType.STREAMING;
     private Map<String, ResourceProfile> slotSharingGroupResources;
     private PipelineOptions.VertexDescriptionMode descriptionMode =
@@ -140,6 +147,7 @@ public class StreamGraph implements Pipeline {
 
     private final List<JobStatusHook> jobStatusHooks = new ArrayList<>();
 
+    // 当作业运行模式是批处理（RuntimeExecutionMode.BATCH），并且启用了动态批调度/自适应批执行相关配置时，该值为 True
     private boolean dynamic;
 
     private boolean autoParallelismEnabled;
@@ -152,6 +160,7 @@ public class StreamGraph implements Pipeline {
         this.checkpointConfig = checkNotNull(checkpointConfig);
         this.savepointRestoreSettings = checkNotNull(savepointRestoreSettings);
 
+        // 初始化空图
         // create an empty new stream graph.
         clear();
     }
@@ -635,6 +644,13 @@ public class StreamGraph implements Pipeline {
                 intermediateDataSetId);
     }
 
+    // 负责解析虚拟节点并最终在物理节点直接创建边
+    // @param upStreamVertexID 上游节点 ID，可能是虚拟节点
+    // @param downStreamVertexID 下游节点 ID，物理节点，边都是建立在物理节点之间的
+    // @param typeNumber 表示当前边连接到下游算子的第一个输入，对于单输入算子，取值仅为 0，表示唯一的输入，对于双输入算子，取值为 0 和 1，对于多输入算子，取值为 0 到
+    // @param outputTag 侧输出标签，如果是侧输出边，则该值不为 null，表示连接到下游算子的哪个侧输出
+    // @param partitioner 上游到下游的分区策略
+    // @param exchangeMode 数据交换模式
     private void addEdgeInternal(
             Integer upStreamVertexID,
             Integer downStreamVertexID,
@@ -645,9 +661,12 @@ public class StreamGraph implements Pipeline {
             StreamExchangeMode exchangeMode,
             IntermediateDataSetID intermediateDataSetId) {
 
+        // 如果上游是虚拟侧输出节点
         if (virtualSideOutputNodes.containsKey(upStreamVertexID)) {
             int virtualId = upStreamVertexID;
+            // 取出真实上游物理节点 id
             upStreamVertexID = virtualSideOutputNodes.get(virtualId).f0;
+            // 获取 outputTag，下游根据其消费特定标签的侧输出
             if (outputTag == null) {
                 outputTag = virtualSideOutputNodes.get(virtualId).f1;
             }
@@ -662,6 +681,7 @@ public class StreamGraph implements Pipeline {
                     intermediateDataSetId);
         } else if (virtualPartitionNodes.containsKey(upStreamVertexID)) {
             int virtualId = upStreamVertexID;
+            // 获取真实上游节点 ID
             upStreamVertexID = virtualPartitionNodes.get(virtualId).f0;
             if (partitioner == null) {
                 partitioner = virtualPartitionNodes.get(virtualId).f1;
@@ -688,6 +708,7 @@ public class StreamGraph implements Pipeline {
         }
     }
 
+    // 在节点之间创建边的核心方法
     private void createActualEdge(
             Integer upStreamVertexID,
             Integer downStreamVertexID,
@@ -699,6 +720,7 @@ public class StreamGraph implements Pipeline {
         StreamNode upstreamNode = getStreamNode(upStreamVertexID);
         StreamNode downstreamNode = getStreamNode(downStreamVertexID);
 
+        // 如果没有指定分区策略并且上下游并行度相同，则使用前向分区策略
         // If no partitioner was specified and the parallelism of upstream and downstream
         // operator matches use forward partitioning, use rebalance otherwise.
         if (partitioner == null
@@ -731,7 +753,16 @@ public class StreamGraph implements Pipeline {
             }
         }
 
+        // Partitioner 的作用是决定将上游算子发送给哪个下游算子，StreamExchangeMode 的作用是决定以什么方式发送数据，在后续生成 JobGraph 是被映射为底层的 ResultPartitionType 与输入依赖，
+        // 从而决定 Shuffle 网络是否雾化、是否流水传输，直接影响延迟和资源/容错特性
+        // 1. 流水传输可端到端反压、低延迟
+        // 2. 阻塞、批式会物化中间结果，打破反压链路，适合阶段边界或大规模重分区
+        // 取值如下
+        // 1. UNDEFINED：未定义，根据作业和全局配置自动选择，流作业通常是 Pipelined
+        // 2. PIPELINED：流水传输，上游实时推送到下游，低延迟，端到端反压
+        // 3. BATCHED/BLOCKING：阻塞传输，上游全部计算完成后再发送到下游
         if (exchangeMode == null) {
+            // 表示根据作业类型（STREAMING 或 BATCH）和全局配置自动决定实际的数据交换模式 PIPELINED 或 BLOCKING，流作业通常是前者
             exchangeMode = StreamExchangeMode.UNDEFINED;
         }
 
@@ -740,6 +771,8 @@ public class StreamGraph implements Pipeline {
          * self unioning a {@link DataStream}) are distinct and unique. Otherwise it would be
          * difficult on the {@link StreamTask} to assign {@link RecordWriter}s to correct {@link
          * StreamEdge}.
+          * 首先计算上游算子和下游算子之间的已经存在的边的条数，将该值作为新边的唯一ID，当同一对节点之间存在多条边时，每条边需要有不同的 ID 才能被 StreamTask 正确区分
+          * 并分配 RecordWriter（不需要在所有 StreamEdge 中全局唯一，只需要确保连接同一节点的不同边之间是唯一的）
          */
         int uniqueId = getStreamEdges(upstreamNode.getId(), downstreamNode.getId()).size();
 
@@ -882,6 +915,7 @@ public class StreamGraph implements Pipeline {
         return streamNodes.keySet();
     }
 
+    // 获取两个节点之间的所有边
     @VisibleForTesting
     public List<StreamEdge> getStreamEdges(int sourceId) {
         return getStreamNode(sourceId).getOutEdges();
@@ -1101,3 +1135,6 @@ public class StreamGraph implements Pipeline {
         }
     }
 }
+// 上游是虚拟分区节点
+// 上游已经是真实节点，边都是建立在物理节点之间
+// 如果没有指定分区策略且上下游并行度不同，则使用重平衡分区器，即将记录轮询发送给所有下游并行子任务

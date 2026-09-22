@@ -34,6 +34,7 @@ import java.util.OptionalInt;
 /**
  * A simple CLI parser for the {@link org.apache.flink.streaming.examples.wordcount.WordCount}
  * example application.
+  * Note：命令行参数解析器，将 args 转成可用的配置对象并传到 Flink 作业中
  */
 public class CLI extends ExecutionConfig.GlobalJobParameters {
 

@@ -73,6 +73,7 @@ public class TimestampsAndWatermarksOperator<T> extends AbstractStreamOperator<T
         this.chainingStrategy = ChainingStrategy.DEFAULT_CHAINING_STRATEGY;
     }
 
+    // 处理每条数据
     @Override
     public void open() throws Exception {
         super.open();
@@ -80,7 +81,9 @@ public class TimestampsAndWatermarksOperator<T> extends AbstractStreamOperator<T
         timestampAssigner = watermarkStrategy.createTimestampAssigner(this::getMetricGroup);
         watermarkGenerator =
                 emitProgressiveWatermarks
+                        // 流模式
                         ? watermarkStrategy.createWatermarkGenerator(this::getMetricGroup)
+                        // 批模式
                         : new NoWatermarksGenerator<>();
 
         wmOutput = new WatermarkEmitter(output);
@@ -88,6 +91,7 @@ public class TimestampsAndWatermarksOperator<T> extends AbstractStreamOperator<T
         watermarkInterval = getExecutionConfig().getAutoWatermarkInterval();
         if (watermarkInterval > 0 && emitProgressiveWatermarks) {
             final long now = getProcessingTimeService().getCurrentProcessingTime();
+            // 注册定时器，在指定时间调用 onProcessingTime 方法
             getProcessingTimeService().registerTimer(now + watermarkInterval, this);
         }
     }
@@ -99,8 +103,10 @@ public class TimestampsAndWatermarksOperator<T> extends AbstractStreamOperator<T
                 element.hasTimestamp() ? element.getTimestamp() : Long.MIN_VALUE;
         final long newTimestamp = timestampAssigner.extractTimestamp(event, previousTimestamp);
 
+        // 给元素添加时间戳
         element.setTimestamp(newTimestamp);
         output.collect(element);
+        // 通知 WatermarkGenerator 处理事件
         watermarkGenerator.onEvent(event, newTimestamp, wmOutput);
     }
 
@@ -130,9 +136,11 @@ public class TimestampsAndWatermarksOperator<T> extends AbstractStreamOperator<T
     @Override
     public void processWatermarkStatus(WatermarkStatus watermarkStatus) throws Exception {}
 
+    // 流结束时执行
     @Override
     public void finish() throws Exception {
         super.finish();
+        // 最后一次触发，确保所有窗口被关闭
         watermarkGenerator.onPeriodicEmit(wmOutput);
     }
 
@@ -159,6 +167,7 @@ public class TimestampsAndWatermarksOperator<T> extends AbstractStreamOperator<T
         public void emitWatermark(Watermark watermark) {
             final long ts = watermark.getTimestamp();
 
+            // 保证单调递增
             if (ts <= currentWatermark) {
                 return;
             }
@@ -167,6 +176,8 @@ public class TimestampsAndWatermarksOperator<T> extends AbstractStreamOperator<T
 
             markActive();
 
+            // 实际注入流的是 org.apache.flink.streaming.api.watermark.Watermark，
+            // 而不是 org.apache.flink.api.common.eventtime.Watermark
             output.emitWatermark(new org.apache.flink.streaming.api.watermark.Watermark(ts));
         }
 

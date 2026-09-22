@@ -34,12 +34,19 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /** Class that manages all the connections between tasks. */
 public class EdgeManager {
 
+    // 分区 ID 与消费该分区的所有 ConsumerVertexGroup 的映射。一个 ConsumerVertexGroup 中的 Vertex 必须属于
+    // 同一个 ExecutionJobVertex，如果有侧输出流或者拓扑分叉，则一个上游 ExecutionJobVertex 会有多个下游
+    // ExecutionJobVertex，因此一个分区可能会被多个 ConsumerVertexGroup 消费
     private final Map<IntermediateResultPartitionID, List<ConsumerVertexGroup>> partitionConsumers =
             new HashMap<>();
 
+    // ExecutionVertex ID 与该 Vertex 消费的所有 ConsumedPartitionGroup 的映射。一个 ExecutionVertex
+    // 可能同时接收来自多个上游 ConsumedPartitionGroup 的数据，如果不使用 List，则无法实现双流 Join 或者
+    // 多流 Union
     private final Map<ExecutionVertexID, List<ConsumedPartitionGroup>> vertexConsumedPartitions =
             new HashMap<>();
 
+    // 分区 ID 与包含该分区的所有 ConsumedPartitionGroup 之间的映射，主要用于实现状态变更的通知
     private final Map<IntermediateResultPartitionID, List<ConsumedPartitionGroup>>
             consumedPartitionsById = new HashMap<>();
 

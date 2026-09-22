@@ -69,18 +69,31 @@ class DefaultExecutionGraphConstructionTest {
     private static final JobManagerJobMetricGroup JOB_MANAGER_JOB_METRIC_GROUP =
             UnregisteredMetricGroups.createUnregisteredJobManagerJobMetricGroup();
 
+    // 创建常规的 ExecutionGraph
     private ExecutionGraph createDefaultExecutionGraph(List<JobVertex> vertices) throws Exception {
         return TestingDefaultExecutionGraphBuilder.newBuilder()
                 .setVertexParallelismStore(SchedulerBase.computeVertexParallelismStore(vertices))
                 .build(EXECUTOR_RESOURCE.getExecutor());
     }
 
+    // 创建动态的 ExecutionGraph
     private ExecutionGraph createDynamicExecutionGraph(List<JobVertex> vertices) throws Exception {
         return TestingDefaultExecutionGraphBuilder.newBuilder()
                 .setVertexParallelismStore(SchedulerBase.computeVertexParallelismStore(vertices))
                 .buildDynamicGraph(EXECUTOR_RESOURCE.getExecutor());
     }
 
+    // 测试两个结构完全相同的 JobGraph 生成的 ExecutionGraph，其中所有的 ExecutionAttemptID 互不相同。ExecutionAttemptID 是随机生成的，即使相同的 JobGraph 提交两次，也不会产生 ID 冲突，保证执行实例的唯一性
+    // 验证复杂 DAG 结构能被正确转换为 ExecutionGraph
+    // 验证 attachJobGraph 对拓扑顺序错误的 JobVertex 列表会抛出异常
+    // 验证 InputSplitSource 被正确传递到 ExecutionJobVertex 的 SplitAssigner
+    // 验证一个 IntermediateDataSet（共享同一个 dataSetId）可以被多个下游 JobVertex 消费
+    // 验证 ALL_TO_ALL 连接中，ConsumedPartitionGroup 被正确注册到 EdgeManager，且所有分区共享同一个 ConsumedPartitionGroup
+    // 验证 POINTWISE 连接中，分区完成时 ConsumedPartitionGroup.numberOfUnfinishedPartitions 计数正确递减
+    // 验证 ALL_TO_ALL 连接中，分区完成时 ConsumedPartitionGroup.numberOfUnfinishedPartitions 计数正确递减
+    // 验证动态图中，ConsumedPartitionGroup 在下游顶点初始化之前不存在，初始化之后能正确反映已完成的分区数
+    // 与上一个测试类似，但针对 POINTWISE 连接的动态图场景
+    // 验证动态图中 attachJobGraph 后，所有 ExecutionJobVertex 处于未初始化状态
     @Test
     void testExecutionAttemptIdInTwoIdenticalJobsIsNotSame() throws Exception {
         JobVertex v1 = new JobVertex("vertex1");
@@ -160,6 +173,7 @@ class DefaultExecutionGraphConstructionTest {
         verifyTestGraph(eg, v1, v2, v3, v4, v5);
     }
 
+    // 验证五个顶点的 DAG 图是否正确，检查每个 ExecutionJobVertex 的上游输入和下游输出是否与预期一致
     private void verifyTestGraph(
             ExecutionGraph eg,
             JobVertex v1,

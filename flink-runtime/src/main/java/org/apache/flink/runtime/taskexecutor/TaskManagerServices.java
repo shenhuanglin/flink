@@ -64,6 +64,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
  * Container for {@link TaskExecutor} services such as the {@link MemoryManager}, {@link IOManager},
  * {@link ShuffleEnvironment}. All services are exclusive to a single {@link TaskExecutor}.
  * Consequently, the respective {@link TaskExecutor} is responsible for closing them.
+  * 持有 TaskExecutor 独占的服务，例如 MemoryManager、IOManager、ShuffleEnvironment 等
  */
 public class TaskManagerServices {
     private static final Logger LOG = LoggerFactory.getLogger(TaskManagerServices.class);

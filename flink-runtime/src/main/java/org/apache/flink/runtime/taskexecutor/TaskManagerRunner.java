@@ -106,6 +106,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * This class is the executable entry point for the task manager in yarn or standalone mode. It
  * constructs the related components (network, I/O manager, memory manager, RPC service, HA service)
  * and starts them.
+  * TaskManager 进程入口，负责初始化所有服务并启动 TaskExecutor
  */
 public class TaskManagerRunner implements FatalErrorHandler {
 
@@ -483,6 +484,9 @@ public class TaskManagerRunner implements FatalErrorHandler {
         final TaskManagerRunner taskManagerRunner;
 
         try {
+            // TaskExecutorServiceFactory 是函数式接口，创建 TaskManagerRunner 时将 TaskManagerRunner 的
+            // createTaskExecutorService 方法作为参数传入，表示将其作为 TaskExecutorServiceFactory 接口的
+            // 匿名实现
             taskManagerRunner =
                     new TaskManagerRunner(
                             configuration,
@@ -608,9 +612,11 @@ public class TaskManagerRunner implements FatalErrorHandler {
 
         String externalAddress = rpcService.getAddress();
 
+        // 从配置中计算 TaskExecutor 的资源规格，包括 CPU、堆内存、托管内存、网络内存等
         final TaskExecutorResourceSpec taskExecutorResourceSpec =
                 TaskExecutorResourceUtils.resourceSpecFromConfig(configuration);
 
+        // 从配置中解析 Slot 数量、临时目录、本地恢复目录、数据端口、类加载顺序、I/O 线程数、节点 ID 等
         TaskManagerServicesConfiguration taskManagerServicesConfiguration =
                 TaskManagerServicesConfiguration.fromConfiguration(
                         configuration,
@@ -620,6 +626,7 @@ public class TaskManagerRunner implements FatalErrorHandler {
                         taskExecutorResourceSpec,
                         workingDirectory);
 
+        // 初始化指标组
         Tuple2<TaskManagerMetricGroup, MetricGroup> taskManagerMetricGroup =
                 MetricUtils.instantiateTaskManagerMetricGroup(
                         metricRegistry,
@@ -627,11 +634,13 @@ public class TaskManagerRunner implements FatalErrorHandler {
                         resourceID,
                         taskManagerServicesConfiguration.getSystemResourceMetricsProbingInterval());
 
+        // 创建 I/O 线程池
         final ExecutorService ioExecutor =
                 Executors.newFixedThreadPool(
                         taskManagerServicesConfiguration.getNumIoThreads(),
                         new ExecutorThreadFactory("flink-taskexecutor-io"));
 
+        // 核心服务初始化
         TaskManagerServices taskManagerServices =
                 TaskManagerServices.fromConfiguration(
                         taskManagerServicesConfiguration,
@@ -641,11 +650,13 @@ public class TaskManagerRunner implements FatalErrorHandler {
                         fatalErrorHandler,
                         workingDirectory);
 
+        // 注册内存指标
         MetricUtils.instantiateFlinkMemoryMetricGroup(
                 taskManagerMetricGroup.f1,
                 taskManagerServices.getTaskSlotTable(),
                 taskManagerServices::getManagedMemorySize);
 
+        // 封装 TaskExecutor 的运行时配置
         TaskManagerConfiguration taskManagerConfiguration =
                 TaskManagerConfiguration.fromConfiguration(
                         configuration,
@@ -655,6 +666,7 @@ public class TaskManagerRunner implements FatalErrorHandler {
 
         String metricQueryServiceAddress = metricRegistry.getMetricQueryServiceGatewayRpcAddress();
 
+        // 创建 TaskExecutor 实例
         return new TaskExecutor(
                 rpcService,
                 taskManagerConfiguration,

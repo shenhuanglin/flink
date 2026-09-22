@@ -327,6 +327,7 @@ public final class Utils {
      * @param staticFactory containing the global factory
      * @param <T> type of factory
      * @return Optional containing the resolved factory if it exists, otherwise it's empty
+      * Resolves (解析) the given factories. The thread local factory has preference over the static
      */
     public static <T> Optional<T> resolveFactory(
             ThreadLocal<T> threadLocalFactory, @Nullable T staticFactory) {

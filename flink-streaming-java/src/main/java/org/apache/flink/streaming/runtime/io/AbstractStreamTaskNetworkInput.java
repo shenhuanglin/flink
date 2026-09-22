@@ -141,6 +141,7 @@ public abstract class AbstractStreamTaskNetworkInput<
         }
     }
 
+    // 网络输入读取到不同的 StreamElement 后进行分发
     private void processElement(StreamElement recordOrMark, DataOutput<T> output) throws Exception {
         if (recordOrMark.isRecord()) {
             output.emitRecord(recordOrMark.asRecord());

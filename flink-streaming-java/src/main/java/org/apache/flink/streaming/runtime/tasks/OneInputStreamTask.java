@@ -239,6 +239,8 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
         @Override
         public void emitWatermark(Watermark watermark) throws Exception {
+            // WatermarkGauge 是一个指标对象，用于记录当前 Task 已经收到最新的 Watermark，不负责触发窗口，主要
+            // 用于监控
             watermarkGauge.setCurrentWatermark(watermark.getTimestamp());
             operator.processWatermark(watermark);
         }

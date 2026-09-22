@@ -46,6 +46,7 @@ public class CmdTaskManagerDecorator extends AbstractKubernetesStepDecorator {
     public FlinkPod decorateFlinkPod(FlinkPod flinkPod) {
         final Container mainContainerWithStartCmd =
                 new ContainerBuilder(flinkPod.getMainContainer())
+                        // 读取配置项 kubernetes.entry.path，默认值是 /docker-entrypoint.sh
                         .withCommand(kubernetesTaskManagerParameters.getContainerEntrypoint())
                         .withArgs(getTaskManagerStartCommand())
                         .addToEnv(
@@ -69,6 +70,7 @@ public class CmdTaskManagerDecorator extends AbstractKubernetesStepDecorator {
         final String dynamicProperties = kubernetesTaskManagerParameters.getDynamicProperties();
 
         return KubernetesUtils.getStartCommandWithBashWrapper(
+                // 常量的值是 kubernetes-taskmanager.sh
                 Constants.KUBERNETES_TASK_MANAGER_SCRIPT_PATH
                         + " "
                         + dynamicProperties

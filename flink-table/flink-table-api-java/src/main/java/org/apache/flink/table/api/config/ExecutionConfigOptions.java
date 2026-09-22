@@ -47,6 +47,7 @@ public class ExecutionConfigOptions {
     //  State Options
     // ------------------------------------------------------------------------
 
+    // 作业中状态数据的存活时间
     @Documentation.TableOption(execMode = Documentation.ExecMode.STREAMING)
     public static final ConfigOption<Duration> IDLE_STATE_RETENTION =
             key("table.exec.state.ttl")
@@ -445,8 +446,11 @@ public class ExecutionConfigOptions {
                                                     + "Pipelined shuffle means data will be sent to consumer tasks once produced.")
                                     .build());
 
+    // 该注解用于生成文档，表明该配置项是一个 Table 模块的选项，并且适用于批处理和流处理两种执行模式（BATCH_STREAMING）
     @Documentation.TableOption(execMode = Documentation.ExecMode.BATCH_STREAMING)
+    // ConfigOption 是一个配置描述对象，用于在框架运行时/规划时读取或验证对应配置键的值
     public static final ConfigOption<LegacyCastBehaviour> TABLE_EXEC_LEGACY_CAST_BEHAVIOUR =
+            // 构建一个配置项构造器并指定配置键字符串
             key("table.exec.legacy-cast-behaviour")
                     .enumType(LegacyCastBehaviour.class)
                     .defaultValue(LegacyCastBehaviour.DISABLED)

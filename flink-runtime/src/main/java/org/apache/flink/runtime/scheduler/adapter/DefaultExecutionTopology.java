@@ -238,6 +238,7 @@ public class DefaultExecutionTopology implements SchedulingTopology {
 
         EdgeManager edgeManager = executionGraph.getEdgeManager();
 
+        // 创建实例
         DefaultExecutionTopology schedulingTopology =
                 new DefaultExecutionTopology(
                         () ->

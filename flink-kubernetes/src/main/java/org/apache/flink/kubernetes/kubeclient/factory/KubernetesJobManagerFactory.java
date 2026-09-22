@@ -94,6 +94,7 @@ public class KubernetesJobManagerFactory {
             accompanyingResources.addAll(stepDecorator.buildAccompanyingKubernetesResources());
         }
 
+        // Deployment 是 Kubernetes 中的工作负载控制器，用于声明式的管理 Pod 的生命周期，其价值在于，如果 JobManager Pod 崩溃，K8s 会自动重新创建一个新的 JobManager Pod 来替代它，从而保证了 JobManager 的高可用性。裸 Pod 崩溃后不会自动重建。但是 TaskManager 使用的是裸 Pod（即直接创建 Pod），因为 TM 的生命周期由 Flink 的KubernetesResourceManagerDriver 主动管理，不需要 K8s 的自动重建机制
         final Deployment deployment =
                 createJobManagerDeployment(flinkPod, kubernetesJobManagerParameters);
 

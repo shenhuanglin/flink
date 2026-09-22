@@ -158,8 +158,13 @@ public class Execution
      */
     private final CompletableFuture<?> initializingOrRunningFuture;
 
+    // 执行尝试的状态，CREATED/SCHEDULED/DEPLOYING/RUNNING/FINISHED/FAILED/CANCELED，当 WebUI 中某个
+    // Subtask 的状态跳变时，即当前 Execution 对象的 state 值在变化
     private volatile ExecutionState state = CREATED;
 
+    // 分配的 LogicalSlot，TaskManager 上的 Slot，在 Flink 的调用链路中，资源申请的最终目标是将 Execution 绑
+    // 定到一个具体的 Slot 中，当 Execution 处于 SCHEDULED 状态时，它正在向 SlotPool 申请资源，当拿到 Slot 后，
+    // Execution 就持有该 Slot 的引用，准备进入部署阶段
     private LogicalSlot assignedResource;
 
     private Optional<ErrorInfo> failureCause =

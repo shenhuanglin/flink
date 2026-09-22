@@ -32,6 +32,7 @@ import static org.apache.flink.configuration.description.TextElement.text;
 @PublicEvolving
 public class DeploymentOptions {
 
+    // 用于指定作业的部署目标，决定作业被提交到哪个环境运行
     public static final ConfigOption<String> TARGET =
             key("execution.target")
                     .stringType()
@@ -54,6 +55,7 @@ public class DeploymentOptions {
                                     .list(text("yarn-application"), text("kubernetes-application"))
                                     .build());
 
+    // 决定提交后客户端是否与作业保持连接并等待其结束，附着模式下客户端会阻塞直到作业完成，而分离模式下客户端会立即返回，允许作业在后台运行，交互需要外部工具或 JobClient
     public static final ConfigOption<Boolean> ATTACHED =
             key("execution.attached")
                     .booleanType()

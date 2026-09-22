@@ -46,6 +46,7 @@ import java.util.concurrent.Executors;
 /**
  * Utility class to extract the {@link RuntimeMessageHeaders} that the {@link
  * DispatcherRestEndpoint} supports.
+  * 仅用于文档生成和 API 稳定性测试的工具类
  */
 public class DocumentingDispatcherRestEndpoint extends DispatcherRestEndpoint
         implements DocumentingRestEndpoint {

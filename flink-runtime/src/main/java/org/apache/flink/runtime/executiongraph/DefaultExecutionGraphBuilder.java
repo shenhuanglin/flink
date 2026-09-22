@@ -104,6 +104,8 @@ public class DefaultExecutionGraphBuilder {
         final String jobName = jobGraph.getName();
         final JobID jobId = jobGraph.getJobID();
 
+        // 作业信息，包括并行度、重启策略等，序列化后随 TaskDeploymentDescriptor 发送给 TaskManager，用于初始化
+        // Task 的运行环境
         final JobInformation jobInformation =
                 new JobInformation(
                         jobId,
@@ -113,9 +115,12 @@ public class DefaultExecutionGraphBuilder {
                         jobGraph.getUserJarBlobKeys(),
                         jobGraph.getClasspaths());
 
+        // 控制每个 ExecutionVertex 保留多少条历史执行记录（Execution 对象），超出限制的旧记录会被丢弃，避免内存泄漏
         final int executionHistorySizeLimit =
                 jobManagerConfig.getInteger(JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE);
 
+        // 该策略决定何时释放上游算子产生的中间结果分区 IntermediateResultPartition，流模式下通常立即释放（PIPELINED），
+        // 批模式下通常等到下游消费完毕后再释放（BLOCKING）
         final PartitionGroupReleaseStrategy.Factory partitionGroupReleaseStrategyFactory =
                 PartitionGroupReleaseStrategyFactoryLoader.loadPartitionGroupReleaseStrategyFactory(
                         jobManagerConfig);
@@ -124,10 +129,14 @@ public class DefaultExecutionGraphBuilder {
                 jobManagerConfig.get(
                         TaskDeploymentDescriptorFactory.OFFLOAD_SHUFFLE_DESCRIPTORS_THRESHOLD);
 
+        // 负责为每个 Execution 生成 TaskDeploymentDescriptor 的工厂
         final TaskDeploymentDescriptorFactory taskDeploymentDescriptorFactory;
         try {
             taskDeploymentDescriptorFactory =
                     new TaskDeploymentDescriptorFactory(
+                            // 将 JobInformation 序列化，若体积超过 BLOB 服务中的最小卸载大小，则上传到 BLOB
+                            // 服务并返回 PermanentBlobKey，否则直接关联在 TDD 中，使得 TaskManager 可以通
+                            // 过 Key 从 BLOB 服务获取 JobInformation，避免大对象通过 RPC 传输
                             BlobWriter.serializeAndTryOffload(jobInformation, jobId, blobWriter),
                             jobId,
                             partitionLocationConstraint,
@@ -138,6 +147,7 @@ public class DefaultExecutionGraphBuilder {
             throw new JobException("Could not create the TaskDeploymentDescriptorFactory.", e);
         }
 
+        // 创建一个空图，仅初始化了部分字段，尚未包含顶点和边
         // create a new execution graph, if none exists so far
         final DefaultExecutionGraph executionGraph =
                 new DefaultExecutionGraph(
@@ -164,6 +174,7 @@ public class DefaultExecutionGraphBuilder {
 
         // set the basic properties
 
+        // 生成 JSON 格式的执行计划，用于在 WebUI 中显示，若生成失败则记录警告并设置一个空的计划
         try {
             executionGraph.setJsonPlan(JsonPlanGenerator.generatePlan(jobGraph));
         } catch (Throwable t) {
@@ -191,6 +202,7 @@ public class DefaultExecutionGraphBuilder {
             }
 
             try {
+                // 为 JobVertex 准备上下文环境
                 vertex.initializeOnMaster(
                         new SimpleInitializeOnMasterContext(
                                 classLoader,
@@ -209,6 +221,7 @@ public class DefaultExecutionGraphBuilder {
                 "Successfully ran initialization on master in {} ms.",
                 (System.nanoTime() - initMasterStart) / 1_000_000);
 
+        // 采用深度优先方式对 JobGraph 中的所有 JobVertex 进行拓扑排序，确保上游算子先被挂载
         // topologically sort the job vertices and attach the graph to the existing one
         List<JobVertex> sortedTopology = jobGraph.getVerticesSortedTopologicallyFromSources();
         if (log.isDebugEnabled()) {
@@ -218,6 +231,8 @@ public class DefaultExecutionGraphBuilder {
                     jobName,
                     jobId);
         }
+        // 构建 ExecutionGraph 的核心步骤，将 JobGraph 中的 JobVertex 转换成 ExecutionGraph 中的
+        // ExecutionJobVertex，并建立它们之间的连接关系，形成一个完整的执行图
         executionGraph.attachJobGraph(sortedTopology, jobManagerJobMetricGroup);
 
         if (log.isDebugEnabled()) {
@@ -225,6 +240,7 @@ public class DefaultExecutionGraphBuilder {
                     "Successfully created execution graph from job graph {} ({}).", jobName, jobId);
         }
 
+        // 配置 Checkpoint
         // configure the state checkpointing
         if (isDynamicGraph) {
             // dynamic graph does not support checkpointing so we skip it

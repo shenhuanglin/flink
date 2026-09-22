@@ -118,6 +118,7 @@ public class EdgeManagerBuildUtil {
 
         Map<IndexRange, List<Integer>> consumersByPartition = new LinkedHashMap<>();
 
+        // 遍历下游 Subtask 的输入信息，确定一个分区由哪些下游 Subtask 进行消费
         for (ExecutionVertexInputInfo executionVertexInputInfo :
                 jobVertexInputInfo.getExecutionVertexInputInfos()) {
             int consumerIndex = executionVertexInputInfo.getSubtaskIndex();
@@ -137,9 +138,11 @@ public class EdgeManagerBuildUtil {
                 (range, subtasks) -> {
                     List<ExecutionVertex> taskVertices = new ArrayList<>();
                     List<IntermediateResultPartition> partitions = new ArrayList<>();
+                    // 获取子任务对应的 ExecutionVertex
                     for (int index : subtasks) {
                         taskVertices.add(jobVertex.getTaskVertices()[index]);
                     }
+                    // 获取对应的分区
                     for (int i = range.getStartIndex(); i <= range.getEndIndex(); ++i) {
                         partitions.add(result.getPartitions()[i]);
                     }

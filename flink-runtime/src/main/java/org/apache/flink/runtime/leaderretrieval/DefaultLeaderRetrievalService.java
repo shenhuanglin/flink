@@ -91,7 +91,9 @@ public class DefaultLeaderRetrievalService
                 "DefaultLeaderRetrievalService can " + "only be started once.");
 
         synchronized (lock) {
+            // 保存监听器
             leaderListener = listener;
+            // 创建驱动器
             leaderRetrievalDriver =
                     leaderRetrievalDriverFactory.createLeaderRetrievalDriver(
                             this, new LeaderRetrievalFatalErrorHandler());

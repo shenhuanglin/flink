@@ -80,7 +80,10 @@ public class PartitionTransformationTranslator<OUT>
             exchangeMode = StreamExchangeMode.UNDEFINED;
         }
 
+        // 为上游每个物理节点添加一个“虚拟的分区节点”，用于携带分区器和交换模式。该节点不会变成运行时算子，StreamGraph 会读取其分区/交换信息，将它们下沉到真实的
+        // StreamEdge 中，并移除虚拟节点本身
         for (Integer inputId : context.getStreamNodeIds(input)) {
+            // 分配一个全局唯一的虚拟节点 ID
             final int virtualId = Transformation.getNewNodeId();
             streamGraph.addVirtualPartitionNode(
                     inputId, virtualId, transformation.getPartitioner(), exchangeMode);

@@ -66,6 +66,10 @@ public class BoundedOutOfOrdernessWatermarks<T> implements WatermarkGenerator<T>
 
     @Override
     public void onPeriodicEmit(WatermarkOutput output) {
+        // Watermark(t) 意味着时间戳 ≤ t 的数据已经全部到达，不会再有更早的数据，如果截止当前的最大时间戳为
+        // maxTimestamp，允许的最大延迟为 outOfOrdernessMillis，则可以确定时间戳
+        // ≤ m - o - 1 已经全部到达，但是时间戳恰好等于 m - o 的事件仍可能到来，所以只能发送时间戳为 m - o - 1
+        // 的 Watermark，否则会导致在时间戳为 m - o 的数据未全部到齐就触发窗口计算
         output.emitWatermark(new Watermark(maxTimestamp - outOfOrdernessMillis - 1));
     }
 }

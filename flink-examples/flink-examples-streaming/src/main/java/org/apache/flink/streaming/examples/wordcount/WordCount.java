@@ -70,12 +70,14 @@ public class WordCount {
     // *************************************************************************
 
     public static void main(String[] args) throws Exception {
+        // 解析命令行参数
         final CLI params = CLI.fromArgs(args);
 
         // Create the execution environment. This is the main entrypoint
         // to building a Flink application.
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
+        // 设置运行模式，默认为流处理模式
         // Apache Flink’s unified approach to stream and batch processing means that a DataStream
         // application executed over bounded input will produce the same final results regardless
         // of the configured execution mode. It is important to note what final means here: a job

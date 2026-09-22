@@ -87,6 +87,22 @@ import static java.lang.Math.min;
 import static org.apache.flink.client.cli.CliFrontendParser.HELP_OPTION;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
+// Flink 命令行工具 ./bin/flink 的核心实现类，负责解析用户输入的命令行参数，构建程序的执行环境，并将程序提交到
+// 集群上执行，是用户与 Flink 集群交互的客户端入口。纯客户端进程，不参与 Job 的实际执行，只负责解析命令、与集群
+// 通信、提交/管理 Job。
+// bin/flink 脚本直接启动一个 JVM 进程，将所有参数传递给 CliFrontend 的 main 方法。
+// 客户端进程负责以下工作
+// 1. 执行用户的 main 方法，从中提取 Flink 能够理解的数据流图（JobGraph）
+// 2. 下载用户程序依赖的 JAR 包和资源文件，并上传到集群
+// 3. 将 JobGraph 通过 REST API 提交到集群的 JobManager 进行调度和执行
+// 4. 提交完成后，可以断开连接（Detached 模式）或保持连接接收进度报告（Attached 模式）
+// 客户端进程可能是重量级的，它需要
+// 1. 在本地执行 main 方法，可能涉及复杂计算
+// 2. 下载所有依赖到本地
+// 3. 通过网络将 Jar 和 JobGraph 上传到集群
+// 由此催生了 Application 模式的产生，在该模式下，客户端仅需解析命令行参数，如 ./bin/flink run -t kubernetes-application ./xx.jar，
+// 然后将 jar 路径、入口类、动态参数等写入配置，提交给集群，触发创建一个包含作业 Jar 包的 JM Pod，提交完成后立即退出。
+// main 方法在 JM 上执行，JobGraph 在 JM 中生成，不需要客户端下载依赖，执行 main、上传 Jar。
 /** Implementation of a simple command line frontend for executing programs. */
 public class CliFrontend {
 

@@ -184,6 +184,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * TaskExecutor implementation. The task executor is responsible for the execution of multiple
  * {@link Task}.
+  * TaskManager 的核心实现
  */
 public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
@@ -435,26 +436,37 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
             throw exception;
         }
 
+        // 启动注册超时定时器，若在规定时间内未成功注册到 ResourceManager，触发 FatalErrorHandler，进程退出
         startRegistrationTimeout();
     }
 
     private void startTaskExecutorServices() throws Exception {
         try {
+            // 向 HA 服务注册监听器，ResourceManager 可能因为故障发生 Leader 切换，旧连接失效后，监听器通知新的
+            // Leader 地址，TaskExecutor 自动重新注册
             // start by connecting to the ResourceManager
             resourceManagerLeaderRetriever.start(new ResourceManagerLeaderListener());
 
+            // 开启 Slot 表，它负责管理 Slot，记录了每个 Slot 的分配情况（空闲/已分配/已激活）、归属的 Job 和
+            // Task，并通过内置的超时计时器在 Slot 长时间未被使用时自动触发释放，而且会向 ResourceManager 汇
+            // 报当前所有 Slot 的状态快照
             // tell the task slot table who's responsible for the task slot actions
             taskSlotTable.start(new SlotActionsImpl(), getMainThreadExecutor());
 
+            // 启动 Job Leader 服务，当 ResourceManager 将 Slot 分配给某个 Job 后，TaskExecutor 开始监
+            // 听该 Job 的 JobMaster 地址，一旦通过 HA 服务发现新的 JobMaster 就自动建立连接，并将已分配的
+            // Slot 提供给它
             // start the job leader service
             jobLeaderService.start(
                     getAddress(), getRpcService(), haServices, new JobLeaderListenerImpl());
 
+            // 创建文件缓存，用于缓存从 BlobServer 下载的文件，避免重复下载
             fileCache =
                     new FileCache(
                             taskManagerConfiguration.getTmpDirectories(),
                             taskExecutorBlobService.getPermanentBlobService());
 
+            // 尝试从磁盘加载上次的 Slot 分配快照（本地恢复）
             tryLoadLocalAllocationSnapshots();
         } catch (Exception e) {
             handleStartTaskExecutorServicesException(e);

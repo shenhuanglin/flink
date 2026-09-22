@@ -108,6 +108,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Base class for the Flink cluster entry points.
  *
  * <p>Specialization of this class can be used for the session mode and the per-job mode
+  * Base class for the Flink cluster entry points. 集群入口点基类
  */
 public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErrorHandler {
 
@@ -234,6 +235,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
             securityContext.runSecured(
                     (Callable<Void>)
                             () -> {
+                                // 真正执行组件初始化
                                 runCluster(configuration, pluginManager);
 
                                 return null;
@@ -284,16 +286,19 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
     private void runCluster(Configuration configuration, PluginManager pluginManager)
             throws Exception {
         synchronized (lock) {
+            // 初始化集群服务
             initializeServices(configuration, pluginManager);
 
             // write host information into configuration
             configuration.setString(JobManagerOptions.ADDRESS, commonRpcService.getAddress());
             configuration.setInteger(JobManagerOptions.PORT, commonRpcService.getPort());
 
+            // 创建工厂对象，其中包含了创建 Dispatcher、ResourceManager 和 WebMonitorEndpoint 三个组件的工厂
             final DispatcherResourceManagerComponentFactory
                     dispatcherResourceManagerComponentFactory =
                             createDispatcherResourceManagerComponentFactory(configuration);
 
+            // 启动 ResourceManager、Dispatcher 和 WebMonitorEndpoint
             clusterComponent =
                     dispatcherResourceManagerComponentFactory.create(
                             configuration,
@@ -311,6 +316,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                             failureEnrichers,
                             this);
 
+            // 关门服务
             clusterComponent
                     .getShutDownFuture()
                     .whenComplete(
@@ -340,6 +346,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 
         LOG.info("Initializing cluster services.");
 
+        // 生成 JobManager 的唯一标识
         synchronized (lock) {
             resourceId =
                     configuration
@@ -348,6 +355,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                                     value ->
                                             DeterminismEnvelope.deterministicValue(
                                                     new ResourceID(value)))
+                            // 如果没有配置就自动生成一个
                             .orElseGet(
                                     () ->
                                             DeterminismEnvelope.nondeterministicValue(
@@ -358,6 +366,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                     getClass().getSimpleName(),
                     resourceId);
 
+            // 创建工作目录
             workingDirectory =
                     ClusterEntrypointUtils.createJobManagerWorkingDirectory(
                             configuration, resourceId);
@@ -366,6 +375,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 
             rpcSystem = RpcSystem.load(configuration);
 
+            // 创建 RPC 服务，用于组件间通信，最终创建的是 PekkoRpcService
             commonRpcService =
                     RpcUtils.createRemoteRpcService(
                             rpcSystem,
@@ -375,26 +385,35 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                             configuration.getString(JobManagerOptions.BIND_HOST),
                             configuration.getOptional(JobManagerOptions.RPC_BIND_PORT));
 
+            // 启动 JMX 监控服务，便于通过 JMX 监控。JMXService 会在 Flink 集群的每个节点启动一个 JMX Agent，
+            // 通过客户端连接 Agent 获取运行时状态（内存占用、线程栈、类加载、GC 以及配置了 JMX Reporter 的
+            // Flink 指标）需要配置 jobmanager.jmx.port 和 taskmanager.jmx.port
             JMXService.startInstance(configuration.getString(JMXServerOptions.JMX_SERVER_PORT));
 
             // update the configuration used to create the high availability services
             configuration.setString(JobManagerOptions.ADDRESS, commonRpcService.getAddress());
             configuration.setInteger(JobManagerOptions.PORT, commonRpcService.getPort());
 
+            // 固定线程池，用于 I/O 操作，如 BlobServer 相关的文件上传下载、与外部系统的交互等，线程数根据配置
+            // 计算得出
             ioExecutor =
                     Executors.newFixedThreadPool(
                             ClusterEntrypointUtils.getPoolSize(configuration),
                             new ExecutorThreadFactory("cluster-io"));
+            // 令牌管理器
             delegationTokenManager =
                     DefaultDelegationTokenManagerFactory.create(
                             configuration,
                             pluginManager,
                             commonRpcService.getScheduledExecutor(),
                             ioExecutor);
+            // 获取安全令牌
             // Obtaining delegation tokens and propagating them to the local JVM receivers in a
             // one-time fashion is required because BlobServer may connect to external file systems
             delegationTokenManager.obtainDelegationTokens();
+            // 高可用服务
             haServices = createHaServices(configuration, ioExecutor, rpcSystem);
+            // 启动 BLOB 存储服务，存储 Job 所依赖的 jar 包和 TM 上传的 log 文件等二进制大对象
             blobServer =
                     BlobUtils.createBlobServer(
                             configuration,
@@ -402,8 +421,15 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                             haServices.createBlobStore());
             blobServer.start();
             configuration.setString(BlobServerOptions.PORT, String.valueOf(blobServer.getPort()));
+            // 心跳服务配置
             heartbeatServices = createHeartbeatServices(configuration);
             failureEnrichers = FailureEnricherUtils.getFailureEnrichers(configuration);
+            // 启动指标注册表和查询服务
+            // ProcessMetricGroup：用于组织和管理指标的类，包含添加的度量和组的关键功能
+            // MetricReporter：用于将 Flink 作业中的指标数据报告给外部系统的组件
+            // MetricRegistry：跟踪所有已注册的 Metric 用于作为 MetricGroup 和 MetricReporter 之间的连接
+            // 一旦指标被注册到 MetricRegistry 中，它们就可以被各种 MetricReporter 捕获并发送到外部监控系统，
+            // 如 Prometheus、Grafana 或自定义的监控系统
             metricRegistry = createMetricRegistry(configuration, pluginManager, rpcSystem);
 
             final RpcService metricQueryServiceRpcService =
@@ -412,6 +438,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                             commonRpcService.getAddress(),
                             configuration.getString(JobManagerOptions.BIND_HOST),
                             rpcSystem);
+            // WebUI 中获取 JVM 相关的指标
             metricRegistry.startQueryService(metricQueryServiceRpcService, null);
 
             final String hostname = RpcUtils.getHostname(commonRpcService);
@@ -454,6 +481,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                 this);
     }
 
+    // 创建心跳服务，实现组件之间的心跳检测
     protected HeartbeatServices createHeartbeatServices(Configuration configuration) {
         return HeartbeatServices.fromConfiguration(configuration);
     }
@@ -732,10 +760,12 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
     // Helper methods
     // --------------------------------------------------
 
+    // 整个启动链的驱动器，
     public static void runClusterEntrypoint(ClusterEntrypoint clusterEntrypoint) {
 
         final String clusterEntrypointName = clusterEntrypoint.getClass().getSimpleName();
         try {
+            // 启动集群入口点，完成组件初始化和启动，最终会启动 MiniDispatcher 进程
             clusterEntrypoint.startCluster();
         } catch (ClusterEntrypointException e) {
             LOG.error(

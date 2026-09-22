@@ -66,6 +66,7 @@ public class ZooKeeperLeaderElectionDriver implements LeaderElectionDriver, Lead
 
         this.leaderLatchPath =
                 ZooKeeperUtils.generateLeaderLatchPath(curatorFramework.getNamespace());
+        // LeaderLatch 是 Curator 提供的一个用于选举 Leader 的工具类
         this.leaderLatch = new LeaderLatch(curatorFramework, ZooKeeperUtils.getLeaderLatchPath());
         this.treeCache =
                 ZooKeeperUtils.createTreeCache(
@@ -95,6 +96,7 @@ public class ZooKeeperLeaderElectionDriver implements LeaderElectionDriver, Lead
                         });
 
         leaderLatch.addListener(this);
+        // 添加监听
         curatorFramework.getConnectionStateListenable().addListener(listener);
         leaderLatch.start();
         treeCache.start();

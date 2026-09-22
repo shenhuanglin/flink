@@ -598,6 +598,7 @@ public abstract class AbstractStreamOperator<OUT>
     }
 
     public void processWatermark(Watermark mark) throws Exception {
+        // 内部的事件时间服务管理器，主要负责管理时间时间计时器
         if (timeServiceManager != null) {
             timeServiceManager.advanceWatermark(mark);
         }

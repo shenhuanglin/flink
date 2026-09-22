@@ -122,6 +122,10 @@ public class ExecutionJobVertex
 
     @Nullable private InputSplitAssigner splitAssigner;
 
+    // 创建 ExecutionJobVertex 的方法
+    // @param graph 所属的 ExecutionGraph
+    // @param jobVertex 对应的 JobVertex
+    // @param parallelismInfo 并行度信息
     @VisibleForTesting
     public ExecutionJobVertex(
             InternalExecutionGraphAccessor graph,
@@ -138,6 +142,7 @@ public class ExecutionJobVertex
 
         this.parallelismInfo = parallelismInfo;
 
+        // 验证并行度是否大于最大并行度
         // verify that our parallelism is not higher than the maximum parallelism
         if (this.parallelismInfo.getParallelism() > this.parallelismInfo.getMaxParallelism()) {
             throw new JobException(
@@ -172,10 +177,12 @@ public class ExecutionJobVertex
 
         this.inputs = new ArrayList<>(jobVertex.getInputs().size());
 
+        // 创建当前顶点的结果集合
         // create the intermediate results
         this.producedDataSets =
                 new IntermediateResult[jobVertex.getNumberOfProducedIntermediateDataSets()];
 
+        // 将当前顶点产生的每个 IntermediateResult 注册到全局映射中，供下游顶点初始化时查找
         for (int i = 0; i < jobVertex.getProducedDataSets().size(); i++) {
             final IntermediateDataSet result = jobVertex.getProducedDataSets().get(i);
 
@@ -187,6 +194,7 @@ public class ExecutionJobVertex
                             result.getResultType());
         }
 
+        // 根据并行度创建 ExecutionVertex，每个 ExecutionVertex 对应一个并行子任务
         // create all task vertices
         for (int i = 0; i < this.parallelismInfo.getParallelism(); i++) {
             ExecutionVertex vertex =
@@ -236,6 +244,7 @@ public class ExecutionJobVertex
             this.operatorCoordinators = Collections.unmodifiableList(coordinators);
         }
 
+        // 针对批处理
         // set up the input splits, if the vertex has any
         try {
             @SuppressWarnings("unchecked")
@@ -393,6 +402,8 @@ public class ExecutionJobVertex
         return slotSharingGroup;
     }
 
+    // 该算子的所有输出数据集，每个 ExecutionJobVertex 对应 JobGraph 中的一个 JobVertex，IntermediateResult
+    // 数组的大小等于 JobVertex 的 IntermediateDataSet 数量，通常是 1，如果有侧输出流则可能大于 1
     @Nullable
     public CoLocationGroup getCoLocationGroup() {
         return coLocationGroup;
@@ -488,6 +499,7 @@ public class ExecutionJobVertex
                 }
             }
 
+            // 获取上游节点的 IntermediateResult
             // fetch the intermediate result via ID. if it does not exist, then it either has not
             // been created, or the order
             // in which this method is called for the job vertices is not a topological order
@@ -498,8 +510,10 @@ public class ExecutionJobVertex
                                 + edge.getSourceId());
             }
 
+            // 将上游节点的 IntermediateResult 添加到当前节点的输入列表中
             this.inputs.add(ires);
 
+            // 建立连接
             EdgeManagerBuildUtil.connectVertexToResult(this, ires);
         }
     }

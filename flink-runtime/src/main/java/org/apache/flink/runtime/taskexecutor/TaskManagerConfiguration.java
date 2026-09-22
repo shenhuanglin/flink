@@ -38,6 +38,7 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.time.Duration;
 
+// TaskManager 的运行时配置
 /** Configuration object for {@link TaskExecutor}. */
 public class TaskManagerConfiguration implements TaskManagerRuntimeInfo {
 

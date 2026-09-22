@@ -46,15 +46,21 @@ public class StatusWatermarkValve {
     /**
      * Array of current status of all input channels. Changes as watermarks & watermark statuses are
      * fed into the valve.
+      * 用一个数组保存所有输入通道的状态
      */
     private final InputChannelStatus[] channelStatuses;
 
+    // 上次向下游输出的 Watermark，用于保证 Watermark 的单调递增
     /** The last watermark emitted from the valve. */
     private long lastOutputWatermark;
 
+    // 上次向下游发送的状态，所有 subpartition 都为 idle 时输出 idle，
+    // 任意一个为 active 则输出 active
     /** The last watermark status emitted from the valve. */
     private WatermarkStatus lastOutputWatermarkStatus;
 
+    // 按照 Channel Watermark 排序的小顶堆，堆顶是所有有效的 Channel 中 Watermark 最小的一个，因此不需要每次
+    // 都进行遍历，直接取堆顶即可
     /** A heap-based priority queue to help find the minimum watermark. */
     private final HeapPriorityQueue<InputChannelStatus> alignedChannelStatuses;
 
@@ -62,6 +68,7 @@ public class StatusWatermarkValve {
      * Returns a new {@code StatusWatermarkValve}.
      *
      * @param numInputChannels the number of input channels that this valve will need to handle
+      * @param numInputChannels 该阀门需要管理的 Channel 的数量
      */
     public StatusWatermarkValve(int numInputChannels) {
         checkArgument(numInputChannels > 0);
@@ -72,8 +79,11 @@ public class StatusWatermarkValve {
                         numInputChannels);
         for (int i = 0; i < numInputChannels; i++) {
             channelStatuses[i] = new InputChannelStatus();
+            // 初始值全部为 Long.MIN_VALUE，表示还没有收到任何 Watermark，事件时间还没有开始推进
             channelStatuses[i].watermark = Long.MIN_VALUE;
+            // 默认所有 Channel 都是 Active 状态，表示有数据流入
             channelStatuses[i].watermarkStatus = WatermarkStatus.ACTIVE;
+            // 把 Channel 标记为 Aligned 然后加入最小堆
             markWatermarkAligned(channelStatuses[i]);
         }
 
@@ -89,6 +99,10 @@ public class StatusWatermarkValve {
      * @param watermark the watermark to feed to the valve
      * @param channelIndex the index of the channel that the fed watermark belongs to (index
      *     starting from 0)
+      * @param output 决定可以向下游传播时，通过它实现
+      * 当前类的实例在 {@link org.apache.flink.streaming.runtime.io.AbstractStreamTaskNetworkInput} 中被
+      * 调用，当输入通道接收到 Watermark 时，调用 {@link #inputWatermark(Watermark, int, DataOutput)} 将
+      * Watermark 输入到阀门中。
      */
     public void inputWatermark(Watermark watermark, int channelIndex, DataOutput<?> output)
             throws Exception {
@@ -101,6 +115,7 @@ public class StatusWatermarkValve {
             // if the input watermark's value is less than the last received watermark for its input
             // channel, ignore it also.
             if (watermarkMillis > channelStatuses[channelIndex].watermark) {
+                // 更新通道自身的 Watermark
                 channelStatuses[channelIndex].watermark = watermarkMillis;
 
                 if (channelStatuses[channelIndex].isWatermarkAligned) {
@@ -111,6 +126,8 @@ public class StatusWatermarkValve {
                     markWatermarkAligned(channelStatuses[channelIndex]);
                 }
 
+                // 更新任何 Channel 后，都会获取所有上游最小的 Watermark，如果大于最近发送的 Watermark，
+                // 就向下游发送
                 // now, attempt to find a new min watermark across all aligned channels
                 findAndOutputNewMinWatermarkAcrossAlignedChannels(output);
             }
@@ -269,8 +286,11 @@ public class StatusWatermarkValve {
      */
     @VisibleForTesting
     protected static class InputChannelStatus implements HeapPriorityQueueElement {
+        // 该 Channel 最近收到的 Watermark
         protected long watermark;
+        // 该 Channel 的状态，Active 或 Idle
         protected WatermarkStatus watermarkStatus;
+        // 该 Channel 当前是否有资格参与最小 Watermark 的计算
         protected boolean isWatermarkAligned;
 
         /**
@@ -309,6 +329,7 @@ public class StatusWatermarkValve {
 
         private void addTo(HeapPriorityQueue<InputChannelStatus> queue) {
             checkState(heapIndex == HeapPriorityQueueElement.NOT_CONTAINED);
+            // 该方法在 static class InputChannelStatus 中，所以 this 指代的是当前的 InputChannelStatus 实例
             queue.add(this);
         }
     }

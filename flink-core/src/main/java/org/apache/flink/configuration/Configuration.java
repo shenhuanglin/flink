@@ -639,6 +639,7 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
         }
     }
 
+    // 将给定的键/值对添加到配置对象中。配置选项的主键将用于映射该值
     @Override
     public Configuration clone() {
         Configuration config = new Configuration();
@@ -716,12 +717,14 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
      */
     @Override
     public <T> T get(ConfigOption<T> option) {
+        // 如果没有找到任何键，则返回给定选项的默认值
         return getOptional(option).orElseGet(option::defaultValue);
     }
 
     @Override
     public <T> Optional<T> getOptional(ConfigOption<T> option) {
         Optional<Object> rawValue = getRawValueFromOption(option);
+        // 配置项值的数据类型
         Class<?> clazz = option.getClazz();
 
         try {
@@ -853,6 +856,7 @@ public class Configuration extends ExecutionConfig.GlobalJobParameters
      * @return the value of the configuration or {@link Optional#empty()}.
      */
     private Optional<Object> getRawValueFromOption(ConfigOption<?> configOption) {
+        // 将配置项作为方法的参数，并执行相应的获取逻辑
         return applyWithOption(configOption, this::getRawValue);
     }
 

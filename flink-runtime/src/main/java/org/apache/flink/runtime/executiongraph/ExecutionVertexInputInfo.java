@@ -23,12 +23,15 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * This class describe the inputs(partitions and subpartitions that belong to the same intermediate
  * result) information of an execution vertex.
+  * 描述单个 Subtask 消费的分区范围和子分区范围
  */
 public class ExecutionVertexInputInfo {
     private final int subtaskIndex;
 
+    // 分区对应一个上游 Subtask 的完整输出
     private final IndexRange partitionIndexRange;
 
+    // 子分区是分区内部按下游消费者划分的数据块，是数据路由的最小单元，子分区的数量由下游消费者数量决定
     private final IndexRange subpartitionIndexRange;
 
     public ExecutionVertexInputInfo(

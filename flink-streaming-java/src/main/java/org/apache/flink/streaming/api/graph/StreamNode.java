@@ -76,6 +76,9 @@ public class StreamNode {
     private TypeSerializer<?> stateKeySerializer;
 
     private StreamOperatorFactory<?> operatorFactory;
+    // 类型序列化器 1. 跨任务/进程传输需要二进制表示：上下游任务在不同的 JVM 或机器上，通过网络交换数据，必须将对象转换为字节流并在对端反序列化 2.
+    // 状态与检查点需要可持久化的类型快照：键控状态、算子状态、定时器等都要持久化到外部存储系统 3. 基于 TypeInformation 的专用 TypeSerializer
+    // 提供高效的序列化机制
     private TypeSerializer<?>[] typeSerializersIn = new TypeSerializer[0];
     private TypeSerializer<?> typeSerializerOut;
 

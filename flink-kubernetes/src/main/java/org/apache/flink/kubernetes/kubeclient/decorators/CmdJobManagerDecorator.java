@@ -44,7 +44,9 @@ public class CmdJobManagerDecorator extends AbstractKubernetesStepDecorator {
     public FlinkPod decorateFlinkPod(FlinkPod flinkPod) {
         final Container mainContainerWithStartCmd =
                 new ContainerBuilder(flinkPod.getMainContainer())
+                        // Pod 容器的 command 由配置项 kubernetes.entry.path，默认值是 /docker-entrypoint.sh
                         .withCommand(kubernetesJobManagerParameters.getContainerEntrypoint())
+                        // 返回的参列表是 ["bash", "-c", "kubernetes-jobmanager.sh kubernetes-session <entrypointArgs>"]
                         .withArgs(getJobManagerStartCommand())
                         .build();
 
@@ -56,6 +58,7 @@ public class CmdJobManagerDecorator extends AbstractKubernetesStepDecorator {
                 KubernetesDeploymentTarget.fromConfig(
                         kubernetesJobManagerParameters.getFlinkConfiguration());
         return KubernetesUtils.getStartCommandWithBashWrapper(
+                // 常量是值是 kubernetes-jobmanager.sh
                 Constants.KUBERNETES_JOB_MANAGER_SCRIPT_PATH
                         + " "
                         + deploymentTarget.getName()

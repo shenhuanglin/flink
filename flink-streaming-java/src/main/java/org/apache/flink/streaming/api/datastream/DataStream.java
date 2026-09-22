@@ -607,6 +607,7 @@ public class DataStream<T> {
      */
     public <R> SingleOutputStreamOperator<R> flatMap(FlatMapFunction<T, R> flatMapper) {
 
+        // 提取类型信息
         TypeInformation<R> outType =
                 TypeExtractor.getFlatMapReturnTypes(
                         clean(flatMapper), getType(), Utils.getCallLocationName(), true);
@@ -625,6 +626,7 @@ public class DataStream<T> {
      * @param outputType {@link TypeInformation} for the result type of the function.
      * @param <R> output type
      * @return The transformed {@link DataStream}.
+      * @return The transformed {@link DataStream}. 将用户的自定义的 FlatMapFunction 封装为运行时算子
      */
     public <R> SingleOutputStreamOperator<R> flatMap(
             FlatMapFunction<T, R> flatMapper, TypeInformation<R> outputType) {
@@ -857,9 +859,12 @@ public class DataStream<T> {
     public SingleOutputStreamOperator<T> assignTimestampsAndWatermarks(
             WatermarkStrategy<T> watermarkStrategy) {
         final WatermarkStrategy<T> cleanedStrategy = clean(watermarkStrategy);
+        // 并行度强制匹配上游，确保 Source 和 Watermark 算子时 1:1 的关系，可以 Chain 在一起
         // match parallelism to input, to have a 1:1 source -> timestamps/watermarks relationship
         // and chain
         final int inputParallelism = getTransformation().getParallelism();
+        // 物理 Transformation，包含了用户的 WatermarkStrategy 和上游 Transformation，在执行计划中被转换为
+        // 实际的 TimestampsAndWatermarksOperator
         final TimestampsAndWatermarksTransformation<T> transformation =
                 new TimestampsAndWatermarksTransformation<>(
                         "Timestamps/Watermarks",
@@ -1191,22 +1196,28 @@ public class DataStream<T> {
             TypeInformation<R> outTypeInfo,
             StreamOperatorFactory<R> operatorFactory) {
 
+        // 当前的调用是由上游算子发起的，故此处的 Transformation 是上游算子
         // read the output type of the input Transform to coax out errors about MissingTypeInfo
         transformation.getOutputType();
 
+        // 关联上游算子，构建逻辑算子节点
         OneInputTransformation<T, R> resultTransform =
                 new OneInputTransformation<>(
+                        // 上游算子
                         this.transformation,
                         operatorName,
                         operatorFactory,
                         outTypeInfo,
+                        // 将 StreamExecutionEnvironment 中的全局并行度设置为当前算子的默认并行度
                         environment.getParallelism(),
                         false);
 
+        // 构建新的 DataStream，保持 API 调用不变，可以在此基础上继续链式调用其他算子
         @SuppressWarnings({"unchecked", "rawtypes"})
         SingleOutputStreamOperator<R> returnStream =
                 new SingleOutputStreamOperator(environment, resultTransform);
 
+        // 将当前算子注册到执行环境中
         getExecutionEnvironment().addOperator(resultTransform);
 
         return returnStream;
